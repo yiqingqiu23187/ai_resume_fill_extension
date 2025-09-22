@@ -1,0 +1,402 @@
+/**
+ * AI Resume AutoFill - Content Script Styles
+ * 内容脚本样式文件，包含悬浮按钮、状态面板和消息提示的样式
+ */
+
+/* 悬浮按钮样式 */
+#ai-resume-autofill-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 24px;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+
+  cursor: pointer;
+  transition: all 0.3s ease;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+#ai-resume-autofill-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+}
+
+#ai-resume-autofill-button .button-icon {
+  font-size: 18px;
+}
+
+#ai-resume-autofill-button .button-text {
+  white-space: nowrap;
+}
+
+/* 状态面板样式 */
+#ai-resume-status-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10001;
+
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  overflow: hidden;
+}
+
+/* 面板头部 */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.panel-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.panel-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.panel-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 面板内容 */
+.panel-content {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(80vh - 72px);
+}
+
+/* 状态信息 */
+.status-info {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-label {
+  font-size: 12px;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.status-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #495057;
+}
+
+/* 操作按钮 */
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.action-buttons button {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#scan-fields-btn {
+  background: #e9ecef;
+  color: #495057;
+}
+
+#scan-fields-btn:hover {
+  background: #dee2e6;
+}
+
+#auto-fill-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+#auto-fill-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+#auto-fill-btn:disabled {
+  background: #adb5bd;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 字段列表 */
+.field-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.field-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.field-item:hover {
+  background: #e9ecef;
+}
+
+.field-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #495057;
+}
+
+.field-type {
+  font-size: 12px;
+  color: #6c757d;
+  background: #dee2e6;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.field-status {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  min-width: 60px;
+  text-align: center;
+}
+
+.field-status {
+  background: #e9ecef;
+  color: #6c757d;
+}
+
+.field-status.filling {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.field-status.success {
+  background: #d4edda;
+  color: #155724;
+}
+
+.field-status.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* 消息提示样式 */
+.ai-resume-message {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10002;
+
+  padding: 12px 16px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+
+  max-width: 320px;
+  word-wrap: break-word;
+
+  animation: slideIn 0.3s ease;
+}
+
+.ai-resume-message.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border-left: 4px solid #17a2b8;
+}
+
+.ai-resume-message.success {
+  background: #d4edda;
+  color: #155724;
+  border-left: 4px solid #28a745;
+}
+
+.ai-resume-message.warning {
+  background: #fff3cd;
+  color: #856404;
+  border-left: 4px solid #ffc107;
+}
+
+.ai-resume-message.error {
+  background: #f8d7da;
+  color: #721c24;
+  border-left: 4px solid #dc3545;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* 滚动条样式 */
+.field-list::-webkit-scrollbar,
+.panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.field-list::-webkit-scrollbar-track,
+.panel-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.field-list::-webkit-scrollbar-thumb,
+.panel-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.field-list::-webkit-scrollbar-thumb:hover,
+.panel-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+  #ai-resume-status-panel {
+    width: 95vw;
+    margin: 0 2.5vw;
+  }
+
+  .status-info {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+  }
+
+  .ai-resume-message {
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+}
+
+/* 确保插件样式不会被网站样式覆盖 */
+#ai-resume-autofill-button,
+#ai-resume-status-panel,
+.ai-resume-message {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+#ai-resume-autofill-button * {
+  all: unset;
+}
+
+#ai-resume-status-panel * {
+  box-sizing: border-box;
+}
+
+/* 重新应用需要的样式 */
+#ai-resume-autofill-button {
+  position: fixed !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  z-index: 10000 !important;
+  display: none !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 12px 16px !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  border-radius: 24px !important;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3) !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+#ai-resume-status-panel {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  z-index: 10001 !important;
+  width: 400px !important;
+  max-width: 90vw !important;
+  max-height: 80vh !important;
+  background: white !important;
+  border-radius: 12px !important;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2) !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  overflow: hidden !important;
+}

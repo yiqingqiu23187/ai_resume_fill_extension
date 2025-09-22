@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Resume AutoFill</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Loading状态 -->
+    <div v-if="loading" class="loading-screen">
+      <div class="loading-spinner"></div>
+      <p>加载中...</p>
+    </div>
+
+    <!-- 未登录状态 - 登录/注册页面 -->
+    <div v-else-if="!isAuthenticated" class="auth-container">
+      <div class="header">
+        <div class="logo">
+          <span class="logo-icon">🤖</span>
+          <span class="logo-text">AI简历填写</span>
+        </div>
+      </div>
+
+      <!-- 登录表单 -->
+      <div v-if="authMode === 'login'" class="auth-form">
+        <h2>登录账户</h2>
+        <form @submit.prevent="login">
+          <div class="form-group">
+            <label for="email">邮箱地址</label>
+            <input
+              type="email"
+              id="email"
+              v-model="loginForm.email"
+              placeholder="请输入邮箱地址"
+              required
+            >
+          </div>
+          <div class="form-group">
+            <label for="password">密码</label>
+            <input
+              type="password"
+              id="password"
+              v-model="loginForm.password"
+              placeholder="请输入密码"
+              required
+            >
+          </div>
+          <button type="submit" class="btn-primary" :disabled="loginLoading">
+            <span v-if="loginLoading">登录中...</span>
+            <span v-else>登录</span>
+          </button>
+        </form>
+        <div class="auth-footer">
+          <p>没有账户？<a href="#" @click="authMode = 'register'">立即注册</a></p>
+        </div>
+      </div>
+
+      <!-- 注册表单 -->
+      <div v-if="authMode === 'register'" class="auth-form">
+        <h2>创建账户</h2>
+        <form @submit.prevent="register">
+          <div class="form-group">
+            <label for="reg-email">邮箱地址</label>
+            <input
+              type="email"
+              id="reg-email"
+              v-model="registerForm.email"
+              placeholder="请输入邮箱地址"
+              required
+            >
+          </div>
+          <div class="form-group">
+            <label for="reg-password">密码</label>
+            <input
+              type="password"
+              id="reg-password"
+              v-model="registerForm.password"
+              placeholder="请输入密码（至少6位）"
+              minlength="6"
+              required
+            >
+          </div>
+          <div class="form-group">
+            <label for="confirm-password">确认密码</label>
+            <input
+              type="password"
+              id="confirm-password"
+              v-model="registerForm.confirmPassword"
+              placeholder="请再次输入密码"
+              required
+            >
+          </div>
+          <button type="submit" class="btn-primary" :disabled="registerLoading">
+            <span v-if="registerLoading">注册中...</span>
+            <span v-else>注册</span>
+          </button>
+        </form>
+        <div class="auth-footer">
+          <p>已有账户？<a href="#" @click="authMode = 'login'">立即登录</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 已登录状态 - 主功能页面 -->
+    <div v-else class="main-container">
+      <div class="header">
+        <div class="logo">
+          <span class="logo-icon">🤖</span>
+          <span class="logo-text">AI简历填写</span>
+        </div>
+        <button class="btn-logout" @click="logout">退出</button>
+      </div>
+
+      <!-- 标签页导航 -->
+      <div class="tabs">
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'dashboard' }"
+          @click="activeTab = 'dashboard'"
+        >
+          概览
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'resume' }"
+          @click="activeTab = 'resume'"
+        >
+          简历管理
+        </button>
+        <button
+          class="tab-btn"
+          :class="{ active: activeTab === 'activation' }"
+          @click="activeTab = 'activation'"
+        >
+          激活码
+        </button>
+      </div>
+
+      <!-- 概览页面 -->
+      <div v-if="activeTab === 'dashboard'" class="tab-content">
+        <div class="welcome-section">
+          <h3>欢迎使用 AI简历填写</h3>
+          <p>智能识别表单字段，一键填写简历信息</p>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">⚡</div>
+            <div class="stat-info">
+              <div class="stat-label">剩余次数</div>
+              <div class="stat-value">{{ usageInfo.remainingUses || 0 }}</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-info">
+              <div class="stat-label">已使用</div>
+              <div class="stat-value">{{ usageInfo.usedCount || 0 }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="quick-actions">
+          <button class="action-btn" @click="activeTab = 'resume'">
+            <span class="action-icon">📋</span>
+            <span>编辑简历</span>
+          </button>
+          <button class="action-btn" @click="activeTab = 'activation'">
+            <span class="action-icon">🔑</span>
+            <span>添加激活码</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 简历管理页面 -->
+      <div v-if="activeTab === 'resume'" class="tab-content">
+        <div class="section-header">
+          <h3>简历信息管理</h3>
+          <p>请填写您的简历信息，用于自动匹配表单字段</p>
+        </div>
+
+        <form @submit.prevent="saveResume" class="resume-form">
+          <div class="form-section">
+            <h4>基本信息</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>姓名</label>
+                <input type="text" v-model="resumeData.name" placeholder="请输入姓名">
+              </div>
+              <div class="form-group">
+                <label>性别</label>
+                <select v-model="resumeData.gender">
+                  <option value="">请选择</option>
+                  <option value="男">男</option>
+                  <option value="女">女</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>手机号码</label>
+                <input type="tel" v-model="resumeData.phone" placeholder="请输入手机号">
+              </div>
+              <div class="form-group">
+                <label>邮箱地址</label>
+                <input type="email" v-model="resumeData.email" placeholder="请输入邮箱">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>出生日期</label>
+              <input type="date" v-model="resumeData.birthDate">
+            </div>
+
+            <div class="form-group">
+              <label>现居地址</label>
+              <input type="text" v-model="resumeData.address" placeholder="请输入现居地址">
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>教育背景</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>学历</label>
+                <select v-model="resumeData.education">
+                  <option value="">请选择</option>
+                  <option value="高中">高中</option>
+                  <option value="专科">专科</option>
+                  <option value="本科">本科</option>
+                  <option value="硕士">硕士</option>
+                  <option value="博士">博士</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>毕业院校</label>
+                <input type="text" v-model="resumeData.school" placeholder="请输入毕业院校">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>专业</label>
+                <input type="text" v-model="resumeData.major" placeholder="请输入专业">
+              </div>
+              <div class="form-group">
+                <label>毕业时间</label>
+                <input type="month" v-model="resumeData.graduationDate">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>工作经验</h4>
+            <div class="form-row">
+              <div class="form-group">
+                <label>工作年限</label>
+                <select v-model="resumeData.workYears">
+                  <option value="">请选择</option>
+                  <option value="应届毕业生">应届毕业生</option>
+                  <option value="1年以下">1年以下</option>
+                  <option value="1-3年">1-3年</option>
+                  <option value="3-5年">3-5年</option>
+                  <option value="5-10年">5-10年</option>
+                  <option value="10年以上">10年以上</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>期望薪资</label>
+                <input type="text" v-model="resumeData.expectedSalary" placeholder="如：10-15K">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>最近工作单位</label>
+              <input type="text" v-model="resumeData.currentCompany" placeholder="请输入最近工作单位">
+            </div>
+
+            <div class="form-group">
+              <label>职位</label>
+              <input type="text" v-model="resumeData.position" placeholder="请输入职位">
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h4>个人技能</h4>
+            <div class="form-group">
+              <label>专业技能</label>
+              <textarea
+                v-model="resumeData.skills"
+                placeholder="请输入您的专业技能，用逗号分隔"
+                rows="3"
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>自我评价</label>
+              <textarea
+                v-model="resumeData.selfIntroduction"
+                placeholder="请简单介绍一下您的个人特点和优势"
+                rows="4"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" :disabled="saveLoading">
+              <span v-if="saveLoading">保存中...</span>
+              <span v-else>保存简历信息</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 激活码管理页面 -->
+      <div v-if="activeTab === 'activation'" class="tab-content">
+        <div class="section-header">
+          <h3>激活码管理</h3>
+          <p>输入激活码来获取更多使用次数</p>
+        </div>
+
+        <div class="activation-form">
+          <div class="form-group">
+            <label>激活码</label>
+            <div class="input-group">
+              <input
+                type="text"
+                v-model="activationCode"
+                placeholder="请输入激活码"
+                maxlength="32"
+              >
+              <button
+                type="button"
+                class="btn-activate"
+                @click="activateCode"
+                :disabled="!activationCode || activateLoading"
+              >
+                <span v-if="activateLoading">激活中...</span>
+                <span v-else>激活</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="usage-summary">
+          <h4>使用情况</h4>
+          <div class="usage-item">
+            <span class="usage-label">总次数：</span>
+            <span class="usage-value">{{ usageInfo.totalUses || 0 }}</span>
+          </div>
+          <div class="usage-item">
+            <span class="usage-label">已使用：</span>
+            <span class="usage-value">{{ usageInfo.usedCount || 0 }}</span>
+          </div>
+          <div class="usage-item">
+            <span class="usage-label">剩余次数：</span>
+            <span class="usage-value highlight">{{ usageInfo.remainingUses || 0 }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 消息提示 -->
+    <div v-if="message" class="message" :class="message.type">
+      {{ message.text }}
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

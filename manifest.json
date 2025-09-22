@@ -1,0 +1,69 @@
+{
+  "manifest_version": 3,
+  "name": "AI Resume AutoFill",
+  "version": "1.0.0",
+  "description": "AI驱动的智能简历自动填写插件，支持各类招聘网站表单的自动识别和填写",
+
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://*/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jobs.51job.com/*",
+        "https://www.zhaopin.com/*",
+        "https://www.lagou.com/*",
+        "https://www.liepin.com/*",
+        "https://careers.tencent.com/*",
+        "https://job.alibaba.com/*",
+        "https://talent.baidu.com/*",
+        "https://hr.163.com/*",
+        "https://zhaopin.baidu.com/*",
+        "https://www.58.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_end"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "AI Resume AutoFill"
+  },
+
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inject.js",
+        "popup/popup.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:8000 https://dashscope.aliyuncs.com;"
+  }
+}
