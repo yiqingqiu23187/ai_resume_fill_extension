@@ -22,16 +22,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://jobs.51job.com/*",
-        "https://www.zhaopin.com/*",
-        "https://www.lagou.com/*",
-        "https://www.liepin.com/*",
-        "https://careers.tencent.com/*",
-        "https://job.alibaba.com/*",
-        "https://talent.baidu.com/*",
-        "https://hr.163.com/*",
-        "https://zhaopin.baidu.com/*",
-        "https://www.58.com/*"
+        "https://*/*",
+        "http://*/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],

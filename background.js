@@ -266,25 +266,15 @@ chrome.runtime.onInstalled.addListener((details) => {
 // 标签页更新时检查是否需要激活插件
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
-    // 检查是否是支持的招聘网站
-    const supportedSites = [
-      'jobs.51job.com',
-      'zhaopin.com',
-      'lagou.com',
-      'liepin.com',
-      'careers.tencent.com',
-      'job.alibaba.com',
-      'talent.baidu.com',
-      'hr.163.com',
-      'zhaopin.baidu.com',
-      '58.com'
-    ];
-
-    const isSupportedSite = supportedSites.some(site => tab.url.includes(site));
-
-    if (isSupportedSite) {
-      // 向内容脚本发送消息，通知已在支持的网站上
-      chrome.tabs.sendMessage(tabId, { action: 'onSupportedSite' });
+    // 支持所有网站，让content script自行判断是否显示按钮
+    if (tab.url.startsWith('http://') || tab.url.startsWith('https://')) {
+      // 向内容脚本发送消息，通知页面加载完成
+      try {
+        chrome.tabs.sendMessage(tabId, { action: 'pageLoaded' });
+      } catch (error) {
+        // 忽略发送消息失败的错误（例如某些特殊页面）
+        console.log('Failed to send message to tab:', error);
+      }
     }
   }
 });
