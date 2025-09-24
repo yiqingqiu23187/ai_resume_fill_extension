@@ -344,6 +344,38 @@ class FormFieldScanner {
     return `${tagName}:nth-child(${index + 1})`;
   }
 
+  // 获取元素XPath
+  getElementXPath(element) {
+    if (element.id) {
+      return `//*[@id="${element.id}"]`;
+    }
+
+    const parts = [];
+    let currentElement = element;
+
+    while (currentElement && currentElement.nodeType === 1) {
+      let tagName = currentElement.tagName.toLowerCase();
+      let index = 1;
+
+      // 计算同级元素中的索引
+      let sibling = currentElement.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName.toLowerCase() === tagName) {
+          index++;
+        }
+        sibling = sibling.previousElementSibling;
+      }
+
+      // 构建路径部分
+      const pathPart = `${tagName}[${index}]`;
+      parts.unshift(pathPart);
+
+      currentElement = currentElement.parentElement;
+    }
+
+    return '/' + parts.join('/');
+  }
+
   // 更新字段显示
   updateFieldsDisplay() {
     const fieldsCountEl = document.querySelector('#fields-count');

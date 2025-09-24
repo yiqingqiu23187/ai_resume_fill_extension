@@ -3,7 +3,7 @@
  * 负责API通信、用户认证状态管理和数据缓存
  */
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 // 存储管理
 class StorageManager {
@@ -99,15 +99,51 @@ class APIManager {
 
   // 获取简历信息
   static async getResume() {
-    return await this.makeRequest('/resume');
+    try {
+      // 先获取简历列表，取第一个简历
+      const listResult = await this.makeRequest('/resumes');
+
+      if (listResult.success && listResult.data && listResult.data.length > 0) {
+        // 如果有简历，获取第一个简历的详情
+        const resumeId = listResult.data[0].id;
+        const detailResult = await this.makeRequest(`/resumes/${resumeId}`);
+        return detailResult;
+      } else {
+        // 如果没有简历，返回一个表示需要创建简历的结果
+        return {
+          success: true,
+          data: null,
+          message: 'No resume found'
+        };
+      }
+    } catch (error) {
+      console.error('APIManager.getResume: 发生错误:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   // 更新简历信息
   static async updateResume(resumeData) {
-    return await this.makeRequest('/resume', {
-      method: 'PUT',
-      body: JSON.stringify(resumeData)
-    });
+    // 先检查是否有现有简历
+    const existingResult = await this.makeRequest('/resumes');
+
+    if (existingResult.success && existingResult.data && existingResult.data.length > 0) {
+      // 更新现有简历
+      const resumeId = existingResult.data[0].id;
+      return await this.makeRequest(`/resumes/${resumeId}`, {
+        method: 'PUT',
+        body: JSON.stringify(resumeData)
+      });
+    } else {
+      // 创建新简历
+      return await this.makeRequest('/resumes', {
+        method: 'POST',
+        body: JSON.stringify(resumeData)
+      });
+    }
   }
 
   // 字段匹配

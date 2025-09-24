@@ -64,6 +64,6 @@
   ],
 
   "content_security_policy": {
-    "extension_pages": "script-src 'self' https://unpkg.com; object-src 'self'; connect-src 'self' http://localhost:8000 https://dashscope.aliyuncs.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:8000 https://dashscope.aliyuncs.com;"
   }
 }
