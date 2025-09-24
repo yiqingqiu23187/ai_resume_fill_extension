@@ -250,104 +250,290 @@ class FormFieldScanner {
     }
   }
 
-  // 扫描表单字段
+  // 扫描表单字段 - 多层启发式策略
   async scanFormFields() {
     try {
-      console.log('🤖 AI Resume: 开始扫描表单字段...');
+      console.log('🔍 AI Resume: 开始智能字段识别...');
 
-      const fields = [];
+      // 第一步：圈定目标 - 所有可能需要填写的元素
+      const allCandidates = document.querySelectorAll('input, textarea, select');
+      console.log(`🔍 发现 ${allCandidates.length} 个候选字段`);
 
-      // 定义需要排除的字段类型
-      const excludedInputTypes = [
-        'hidden', 'button', 'submit', 'reset', 'image',
-        'file', 'search', 'range', 'color'
-      ];
+      const fieldsToAnalyze = [];
 
-      // 扫描输入框 - 过滤掉不需要填写的类型
-      const inputs = document.querySelectorAll('input');
-      inputs.forEach((input, index) => {
-        const inputType = input.type ? input.type.toLowerCase() : 'text';
-
-        // 跳过不需要AI填写的字段类型
-        if (excludedInputTypes.includes(inputType)) {
-          return;
-        }
-
-        const fieldInfo = this.extractFieldInfo(input, 'input', index);
-        if (fieldInfo && this.isValidFieldForAI(fieldInfo)) {
-          fields.push(fieldInfo);
+      // 第二步：为每个元素建立完整档案
+      allCandidates.forEach((element, index) => {
+        const fieldProfile = this.buildFieldProfile(element, index);
+        if (fieldProfile && this.shouldAnalyzeField(element)) {
+          fieldsToAnalyze.push(fieldProfile);
+          console.log(`✅ 字段 ${index + 1}: ${fieldProfile.clues.bestLabel || '未知'} [${element.tagName.toLowerCase()}]`);
+        } else {
+          console.log(`❌ 跳过字段 ${index + 1}: ${element.tagName.toLowerCase()}-${element.type || 'unknown'}`);
         }
       });
 
-      // 扫描选择框
-      const selects = document.querySelectorAll('select');
-      selects.forEach((select, index) => {
-        const fieldInfo = this.extractFieldInfo(select, 'select', index);
-        if (fieldInfo && this.isValidFieldForAI(fieldInfo)) {
-          fields.push(fieldInfo);
-        }
-      });
+      this.scannedFields = fieldsToAnalyze;
+      console.log(`🎯 AI Resume: 字段档案建立完成，共 ${fieldsToAnalyze.length} 个有效字段`);
 
-      // 扫描文本域
-      const textareas = document.querySelectorAll('textarea');
-      textareas.forEach((textarea, index) => {
-        const fieldInfo = this.extractFieldInfo(textarea, 'textarea', index);
-        if (fieldInfo && this.isValidFieldForAI(fieldInfo)) {
-          fields.push(fieldInfo);
-        }
-      });
+      // 输出详细的字段信息用于调试
+      this.logFieldProfiles(fieldsToAnalyze);
 
-      this.scannedFields = fields;
+      // 更新显示
       this.updateFieldsDisplay();
-
-      console.log(`🤖 AI Resume: 扫描完成，找到 ${fields.length} 个字段`);
 
       // 启用填写按钮
       const autoFillBtn = document.querySelector('#auto-fill-btn');
-      if (autoFillBtn && fields.length > 0) {
+      if (autoFillBtn && fieldsToAnalyze.length > 0) {
         autoFillBtn.disabled = false;
       }
 
     } catch (error) {
-      console.error('🤖 AI Resume: 扫描表单字段时发生错误:', error);
+      console.error('🤖 AI Resume: 扫描字段时发生错误:', error);
+      this.showMessage('扫描表单字段失败: ' + error.message, 'error');
     }
   }
 
-  // 提取字段信息
-  extractFieldInfo(element, type, index) {
+  // 🥇 为字段建立完整档案 - 多层启发式策略核心
+  buildFieldProfile(element, index) {
     try {
-      const label = this.getFieldLabel(element);
-      const fieldType = this.getFieldType(element);
+      // 生成唯一选择器，用于后续定位
+      const uniqueSelector = this.generateUniqueCssSelector(element);
 
-      const attributes = {
-        id: element.id || `${type}_${index}`,
-        name: element.name || '',
-        placeholder: element.placeholder || '',
-        required: element.required || false,
-        value: element.value || ''
-      };
+       // 搜集所有可能的线索
+       const clues = {
+         // 🥇 第一层：最可靠的语义链接
+         labelFor: this.findLabelFor(element),
+         frameworkLabel: this.findFrameworkLabel(element), // 🎯 新增：框架标签
+         parentLabel: this.findParentLabel(element),
 
-      let options = [];
-      if (type === 'select' && element.options) {
-        options = Array.from(element.options).map(option => ({
-          value: option.value,
-          text: option.textContent.trim()
-        })).filter(option => option.value);
-      }
+         // 🥈 第二层：元素自身的描述性属性
+         placeholder: element.placeholder || '',
+         ariaLabel: element.ariaLabel || element.getAttribute('aria-label') || '',
+         ariaLabelledBy: element.getAttribute('aria-labelledby') || '',
+         title: element.title || '',
 
-      return {
-        name: element.name || element.id || `field_${index}`,
-        type: fieldType,
-        elementType: type,
-        label,
-        attributes,
-        options,
+         // 🥉 第三层：命名约定和ID/Name
+         id: element.id || '',
+         name: element.name || '',
+         className: element.className || '',
+
+         // 🔍 第四层：上下文线索
+         siblingText: this.findSiblingText(element),
+         parentText: this.findParentText(element),
+         sectionHeader: this.findSectionHeader(element),
+
+         // 综合得出最佳标签
+         bestLabel: this.determineBestLabel(element)
+       };
+
+      // 字段基本信息
+      const fieldProfile = {
+        selector: uniqueSelector,
+        tag: element.tagName.toLowerCase(),
+        type: element.type || 'text',
+        clues: clues,
+
+        // 兼容旧格式的属性
+        name: clues.name || clues.id || `field_${index}`,
+        elementType: element.tagName.toLowerCase(),
+        label: clues.bestLabel,
+        attributes: {
+          id: clues.id,
+          name: clues.name,
+          placeholder: clues.placeholder,
+          required: element.required || false,
+          readonly: element.readOnly || false,
+          disabled: element.disabled || false
+        },
         element: element
       };
+
+      // 对于select元素，提取选项
+      if (element.tagName === 'SELECT') {
+        fieldProfile.options = Array.from(element.options).map(opt => ({
+          value: opt.value,
+          text: opt.textContent.trim()
+        })).filter(opt => opt.value);
+
+        fieldProfile.clues.options = fieldProfile.options.map(opt => opt.text);
+      }
+
+      return fieldProfile;
     } catch (error) {
-      console.error('🤖 AI Resume: 提取字段信息失败:', error);
+      console.error('🔍 AI Resume: 建立字段档案失败:', error);
       return null;
     }
+  }
+
+  // 🏷️ 确定最佳标签
+  determineBestLabel(element) {
+    const candidates = [
+      this.findLabelFor(element),
+      this.findFrameworkLabel(element),  // 🎯 新增：框架模式识别 (高优先级)
+      this.findParentLabel(element),
+      element.ariaLabel || element.getAttribute('aria-label'),
+      this.cleanLabelText(element.placeholder),
+      this.cleanLabelText(element.title),
+      this.findSiblingText(element),
+      this.inferLabelFromName(element),
+      `${element.tagName.toLowerCase()}_${Date.now() % 1000}`
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate && candidate.trim() && candidate.length >= 2) {
+        return candidate.trim();
+      }
+    }
+
+    return `未知字段_${Date.now() % 1000}`;
+  }
+
+  // 🔗 查找label[for]关联
+  findLabelFor(element) {
+    if (!element.id) return null;
+    const label = document.querySelector(`label[for="${element.id}"]`);
+    return label ? this.cleanLabelText(label.textContent) : null;
+  }
+
+  // 🎯 针对UI框架的特殊识别 (新增)
+  findFrameworkLabel(element) {
+    // iView/View UI框架模式识别
+    const formItem = element.closest('.ivu-form-item');
+    if (formItem) {
+      const label = formItem.querySelector('.ivu-form-item-label');
+      if (label) {
+        return this.cleanLabelText(label.textContent);
+      }
+    }
+
+    // Element UI框架模式识别
+    const elFormItem = element.closest('.el-form-item');
+    if (elFormItem) {
+      const label = elFormItem.querySelector('.el-form-item__label');
+      if (label) {
+        return this.cleanLabelText(label.textContent);
+      }
+    }
+
+    // Ant Design框架模式识别
+    const antFormItem = element.closest('.ant-form-item');
+    if (antFormItem) {
+      const label = antFormItem.querySelector('.ant-form-item-label label');
+      if (label) {
+        return this.cleanLabelText(label.textContent);
+      }
+    }
+
+    // 通用form-item模式
+    const genericFormItem = element.closest('[class*="form-item"], [class*="field"], [class*="input-group"]');
+    if (genericFormItem) {
+      const possibleLabels = genericFormItem.querySelectorAll('label, [class*="label"]');
+      for (const label of possibleLabels) {
+        if (label !== element && !label.contains(element)) {
+          const labelText = this.cleanLabelText(label.textContent);
+          if (labelText && labelText.length <= 20) {
+            return labelText;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // 📦 查找父级label
+  findParentLabel(element) {
+    const parentLabel = element.closest('label');
+    if (parentLabel) {
+      // 排除input自身的文本
+      const labelText = parentLabel.textContent;
+      const inputText = element.value || element.placeholder || '';
+      const cleanText = labelText.replace(inputText, '');
+      return this.cleanLabelText(cleanText);
+    }
+    return null;
+  }
+
+  // 👥 查找兄弟元素文本
+  findSiblingText(element) {
+    const candidates = [];
+
+    // 前面的兄弟元素
+    let sibling = element.previousElementSibling;
+    for (let i = 0; i < 3 && sibling; i++) {
+      if (sibling.textContent && sibling.textContent.trim()) {
+        candidates.push(this.cleanLabelText(sibling.textContent));
+      }
+      sibling = sibling.previousElementSibling;
+    }
+
+    // 父元素的前一个兄弟
+    const parentSibling = element.parentElement?.previousElementSibling;
+    if (parentSibling && parentSibling.textContent) {
+      candidates.push(this.cleanLabelText(parentSibling.textContent));
+    }
+
+    return candidates.find(text => text && text.length >= 2 && text.length <= 20) || '';
+  }
+
+  // 📄 查找父容器文本
+  findParentText(element) {
+    const parent = element.parentElement;
+    if (!parent) return '';
+
+    const fullText = parent.textContent || '';
+    // 截断过长的文本
+    return fullText.slice(0, 100);
+  }
+
+  // 📋 查找章节标题
+  findSectionHeader(element) {
+    let container = element.parentElement;
+    for (let i = 0; i < 5 && container; i++) {
+      const headers = container.querySelectorAll('h1, h2, h3, h4, h5, h6, .title, .header, [class*="title"], [class*="header"]');
+      for (const header of headers) {
+        const headerText = this.cleanLabelText(header.textContent);
+        if (headerText && headerText.length <= 30) {
+          return headerText;
+        }
+      }
+      container = container.parentElement;
+    }
+    return '';
+  }
+
+  // 🧠 从name/id推断标签
+  inferLabelFromName(element) {
+    const name = element.name || element.id || '';
+    if (!name) return '';
+
+    // 常见模式映射
+    const patterns = [
+      [/name|姓名|xingming/i, '姓名'],
+      [/phone|tel|mobile|手机|电话|shouji|dianhua/i, '手机号'],
+      [/email|邮箱|youxiang|mail/i, '邮箱'],
+      [/age|年龄|nianling/i, '年龄'],
+      [/birth|生日|birthday|shengri/i, '生日'],
+      [/gender|sex|性别|xingbie/i, '性别'],
+      [/address|地址|dizhi/i, '地址'],
+      [/company|公司|gongsi/i, '公司'],
+      [/position|title|职位|zhiwei/i, '职位'],
+      [/salary|薪资|xinzi|工资|gongzi/i, '薪资'],
+      [/experience|exp|经验|jingyan/i, '工作经验'],
+      [/education|学历|xueli/i, '学历'],
+      [/school|学校|xuexiao/i, '学校'],
+      [/major|专业|zhuanye/i, '专业'],
+      [/skill|技能|jineng/i, '技能']
+    ];
+
+    for (const [pattern, label] of patterns) {
+      if (pattern.test(name)) {
+        return label;
+      }
+    }
+
+    // 转换驼峰命名
+    return name.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
   }
 
   // 获取字段标签 - 增强版
@@ -521,46 +707,153 @@ class FormFieldScanner {
     return 'unknown';
   }
 
-  // 判断字段是否适合AI填写
-  isValidFieldForAI(fieldInfo) {
-    if (!fieldInfo) return false;
+  // 🚫 判断字段是否应该分析 - 基础过滤
+  shouldAnalyzeField(element) {
+    // 排除明显不需要填写的字段类型
+    const excludedTypes = [
+      'hidden', 'button', 'submit', 'reset', 'image',
+      'file', 'color', 'range'
+    ];
 
-    // 检查字段是否可见 - 放宽条件，包括一些动态显示的字段
-    const element = fieldInfo.element;
-    if (!element) return false;
+    if (excludedTypes.includes(element.type)) {
+      return false;
+    }
 
-    // 检查元素是否在DOM中且不是完全隐藏的
-    const rect = element.getBoundingClientRect();
+    // 检查可见性
     const style = window.getComputedStyle(element);
     if (style.display === 'none' || style.visibility === 'hidden') {
       return false;
     }
 
-    // 检查字段是否被禁用 - 只过滤明确禁用的，不过滤只读
+    // 检查基本交互性
     if (element.disabled) {
       return false;
     }
 
-    // 过滤验证码、密码等特殊字段 - 只过滤明确的敏感字段
-    const excludePatterns = [
-      /captcha/i, /验证码/, /^密码$/, /^password$/i, /confirm.*password/i,
-      /csrf/i, /^token$/i, /api.*key/i
-    ];
+    return true;
+  }
 
-    const labelText = fieldInfo.label.toLowerCase();
-    const nameText = (fieldInfo.attributes?.name || '').toLowerCase();
-    const placeholderText = (fieldInfo.attributes?.placeholder || '').toLowerCase();
-
-    for (const pattern of excludePatterns) {
-      if (pattern.test(labelText) || pattern.test(nameText) || pattern.test(placeholderText)) {
-        console.log(`🤖 AI Resume: 过滤敏感字段 ${fieldInfo.label}`);
-        return false;
+  // 🔗 生成唯一CSS选择器
+  generateUniqueCssSelector(element) {
+    try {
+      // 方法1: 如果有唯一的ID
+      if (element.id) {
+        const testSelector = `#${CSS.escape(element.id)}`;
+        if (document.querySelectorAll(testSelector).length === 1) {
+          return testSelector;
+        }
       }
+
+      // 方法2: 使用name属性
+      if (element.name) {
+        const testSelector = `${element.tagName.toLowerCase()}[name="${CSS.escape(element.name)}"]`;
+        if (document.querySelectorAll(testSelector).length === 1) {
+          return testSelector;
+        }
+      }
+
+      // 方法3: 使用nth-child
+      let selector = element.tagName.toLowerCase();
+      let currentElement = element;
+
+      while (currentElement.parentElement) {
+        const parent = currentElement.parentElement;
+        const siblings = Array.from(parent.children).filter(
+          child => child.tagName === currentElement.tagName
+        );
+
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(currentElement) + 1;
+          selector = `${parent.tagName.toLowerCase()} > ${selector}:nth-child(${index})`;
+        } else {
+          selector = `${parent.tagName.toLowerCase()} > ${selector}`;
+        }
+
+        currentElement = parent;
+
+        // 如果到了有ID的父元素，可以停止
+        if (parent.id) {
+          selector = `#${CSS.escape(parent.id)} ${selector}`;
+          break;
+        }
+
+        // 避免选择器过长
+        if (selector.split(' ').length > 6) {
+          break;
+        }
+      }
+
+      return selector;
+    } catch (error) {
+      console.warn('🔗 生成选择器失败，使用备选方案:', error);
+      // 备选方案：基于位置的选择器
+      const tag = element.tagName.toLowerCase();
+      const allSameTag = document.querySelectorAll(tag);
+      const index = Array.from(allSameTag).indexOf(element);
+      return `${tag}:nth-of-type(${index + 1})`;
+    }
+  }
+
+  // 📋 输出字段档案用于调试
+  logFieldProfiles(profiles) {
+    if (profiles.length === 0) {
+      console.log('📋 AI Resume: 没有找到有效字段');
+      return;
     }
 
-    // 输出调试信息
-    console.log(`🤖 AI Resume: 字段通过验证 - ${fieldInfo.label} [${fieldInfo.type}]`);
-    return true;
+    console.group('📋 AI Resume: 字段档案详情');
+
+    profiles.forEach((profile, index) => {
+      console.group(`📝 字段 ${index + 1}: ${profile.clues.bestLabel}`);
+
+      console.log('🎯 基本信息:', {
+        tag: profile.tag,
+        type: profile.type,
+        selector: profile.selector
+      });
+
+       console.log('🔍 搜集到的线索:', {
+         '🥇 labelFor': profile.clues.labelFor,
+         '🥇 frameworkLabel': profile.clues.frameworkLabel,
+         '🥇 parentLabel': profile.clues.parentLabel,
+         '🥈 placeholder': profile.clues.placeholder,
+         '🥈 ariaLabel': profile.clues.ariaLabel,
+         '🥉 id': profile.clues.id,
+         '🥉 name': profile.clues.name,
+         '🔍 siblingText': profile.clues.siblingText,
+         '🔍 sectionHeader': profile.clues.sectionHeader
+       });
+
+      if (profile.options && profile.options.length > 0) {
+        console.log('📋 选项:', profile.options.slice(0, 5)); // 只显示前5个
+      }
+
+      console.groupEnd();
+    });
+
+     // 统计信息
+     const labelSources = profiles.map(p => {
+       if (p.clues.labelFor) return 'labelFor';
+       if (p.clues.frameworkLabel) return 'frameworkLabel';  // 🎯 新增统计
+       if (p.clues.parentLabel) return 'parentLabel';
+       if (p.clues.ariaLabel) return 'ariaLabel';
+       if (p.clues.placeholder) return 'placeholder';
+       if (p.clues.siblingText) return 'siblingText';
+       return 'inferred';
+     });
+
+    const sourceStats = labelSources.reduce((acc, source) => {
+      acc[source] = (acc[source] || 0) + 1;
+      return acc;
+    }, {});
+
+    console.log('📊 标签来源统计:', sourceStats);
+    console.groupEnd();
+  }
+
+  // 判断字段是否适合AI填写 (保留兼容性)
+  isValidFieldForAI(fieldInfo) {
+    return this.shouldAnalyzeField(fieldInfo.element);
   }
 
   // 更新字段显示
@@ -643,16 +936,47 @@ class FormFieldScanner {
         return;
       }
 
-      // 准备字段信息用于AI匹配 - 转换为后端期望的格式
-      const fieldsForMatching = this.scannedFields.map(field => ({
-        name: field.name || field.attributes?.name || field.attributes?.id || `field_${Date.now()}`,
+      // 准备字段信息用于AI匹配 - 新的多层启发式数据格式
+      const fieldsForMatching = this.scannedFields.map((field, index) => ({
+        // 基本字段信息
+        name: field.clues.name || field.clues.id || `field_${index}`,
         type: field.type,
-        label: field.label,
-        placeholder: field.attributes?.placeholder || '',
+        label: field.clues.bestLabel,
+        placeholder: field.clues.placeholder,
         required: field.attributes?.required || false,
+
+        // 选项 (对于select元素)
         options: field.options?.map(opt => opt.text || opt.value) || [],
-        selector: null, // 可以后续添加CSS选择器生成
-        xpath: null     // 可以后续添加XPath生成
+
+        // 定位信息
+        selector: field.selector,
+        xpath: null,
+
+         // 🔍 丰富的上下文线索 - 这是关键改进！
+         context_clues: {
+           // 🥇 最可靠的语义链接
+           label_for: field.clues.labelFor,
+           framework_label: field.clues.frameworkLabel, // 🎯 新增：框架标签
+           parent_label: field.clues.parentLabel,
+
+           // 🥈 元素自身描述
+           aria_label: field.clues.ariaLabel,
+           title: field.clues.title,
+
+           // 🥉 命名约定
+           element_id: field.clues.id,
+           element_name: field.clues.name,
+           class_name: field.clues.className,
+
+           // 🔍 上下文线索
+           sibling_text: field.clues.siblingText,
+           parent_text: field.clues.parentText?.substring(0, 100), // 限制长度
+           section_header: field.clues.sectionHeader,
+
+           // 元素标签和类型
+           tag_name: field.tag,
+           input_type: field.type
+         }
       }));
 
       console.log('🤖 AI Resume: 发送字段信息进行AI匹配...', fieldsForMatching);
