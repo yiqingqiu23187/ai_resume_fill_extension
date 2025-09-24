@@ -147,10 +147,14 @@ class APIManager {
   }
 
   // 字段匹配
-  static async matchFields(fields) {
-    return await this.makeRequest('/match-fields', {
+  static async matchFields(fields, resumeId, websiteUrl) {
+    return await this.makeRequest('/matching/match-fields', {
       method: 'POST',
-      body: JSON.stringify({ fields })
+      body: JSON.stringify({
+        resume_id: resumeId,
+        form_fields: fields,
+        website_url: websiteUrl
+      })
     });
   }
 
@@ -230,7 +234,11 @@ async function handleMessage(request, sender, sendResponse) {
         break;
 
       case 'matchFields':
-        const matchResult = await APIManager.matchFields(request.fields);
+        const matchResult = await APIManager.matchFields(
+          request.fields,
+          request.resumeId,
+          request.websiteUrl
+        );
         sendResponse(matchResult);
         break;
 
