@@ -228,7 +228,11 @@ class FormFieldScanner {
       pageFeatures.urlContainsForm ||
       pageFeatures.hasFormClass ||
       pageFeatures.hasFormTags ||
-      (pageFeatures.pageContainsFormKeywords && visibleFormElements.length >= 1);
+      (pageFeatures.pageContainsFormKeywords && visibleFormElements.length >= 1) ||
+      // 🎯 新增：强制在常见招聘网站显示
+      /zhaopin|51job|lagou|boss|liepin|jobui|智联|前程无忧|拉勾|boss直聘|猎聘/i.test(window.location.href) ||
+      // 🎯 新增：如果页面有任何input元素就显示（最宽松条件）
+      visibleFormElements.length > 0;
 
     if (shouldShowButton) {
       console.log('🤖 AI Resume: 条件满足，显示按钮');
@@ -281,6 +285,9 @@ class FormFieldScanner {
       // 更新显示
       this.updateFieldsDisplay();
 
+      // 🎯 显示嵌套模式按钮
+      this.updateNestedFieldsDisplay();
+
       // 启用填写按钮
       const autoFillBtn = document.querySelector('#auto-fill-btn');
       if (autoFillBtn && fieldsToAnalyze.length > 0) {
@@ -291,6 +298,1370 @@ class FormFieldScanner {
       console.error('🤖 AI Resume: 扫描字段时发生错误:', error);
       this.showMessage('扫描表单字段失败: ' + error.message, 'error');
     }
+  }
+
+  // 🎯 全新方案：基于视觉聚类的嵌套表单识别
+  async scanNestedFormStructure() {
+    try {
+      console.log('🔍 AI Resume: 开始基于视觉聚类的嵌套表单识别...');
+
+      // 第一步：识别所有"信息原子"
+      const formAtoms = this.extractFormAtoms();
+      console.log(`🔬 发现 ${formAtoms.length} 个信息原子`);
+
+      // 第二步：标签-输入框配对
+      const pairedAtoms = this.pairLabelsWithInputs(formAtoms);
+      console.log(`🔗 完成标签配对，得到 ${pairedAtoms.length} 个配对原子`);
+
+      // 第三步：二维聚类识别对象结构
+      const objectGroups = this.clusterIntoObjects(pairedAtoms);
+      console.log(`📦 识别出 ${objectGroups.length} 个对象组`);
+
+      // 第四步：结构对比识别列表
+      const listGroups = this.identifyLists(objectGroups);
+      console.log(`📋 识别出 ${listGroups.length} 个列表结构`);
+
+      // 第五步：递归构建JSON树
+      const nestedStructure = this.buildNestedJSON(listGroups, pairedAtoms);
+
+      console.log('🎯 AI Resume: 视觉聚类识别完成:', nestedStructure);
+
+      // 存储识别结果
+      this.nestedFormStructure = nestedStructure;
+
+      // 更新显示
+      this.updateNestedFieldsDisplay();
+
+      // 显示扫描结果消息
+      const fieldCount = this.countNestedFields(nestedStructure);
+      if (fieldCount > 0) {
+        this.showMessage(`🎉 视觉聚类完成！识别到 ${fieldCount} 个字段，点击"嵌套填写"开始填写`, 'success');
+      } else {
+        this.showMessage('未发现明显的嵌套结构，建议使用常规填写模式', 'warning');
+      }
+
+    } catch (error) {
+      console.error('🤖 AI Resume: 视觉聚类识别失败:', error);
+      this.showMessage('视觉聚类识别失败: ' + error.message, 'error');
+    }
+  }
+
+  // 🔬 第一步：提取所有"信息原子"
+  extractFormAtoms() {
+    const atoms = [];
+
+    // 找出所有可输入元素
+    const allInputs = document.querySelectorAll('input:not([type="button"]):not([type="submit"]):not([type="reset"]), textarea, select');
+
+    allInputs.forEach((element, index) => {
+      if (!this.shouldAnalyzeField(element)) return;
+
+      // 获取视觉位置信息（关键！）
+      const rect = element.getBoundingClientRect();
+      const computedStyle = window.getComputedStyle(element);
+
+      // 跳过不可见元素
+      if (rect.width === 0 || rect.height === 0 ||
+          computedStyle.display === 'none' ||
+          computedStyle.visibility === 'hidden') {
+        return;
+      }
+
+      // 建立完整的字段档案
+      const fieldProfile = this.buildFieldProfile(element, index);
+
+      const atom = {
+        id: `atom_${index}`,
+        element: element,
+
+        // 🎯 核心：视觉位置和尺寸
+        bounds: {
+          x: rect.left + window.scrollX,
+          y: rect.top + window.scrollY,
+          width: rect.width,
+          height: rect.height,
+          centerX: rect.left + rect.width / 2,
+          centerY: rect.top + rect.height / 2
+        },
+
+        // 复用成熟的字段分析逻辑
+        profile: fieldProfile,
+
+        // CSS选择器
+        selector: this.generateUniqueSelector(element),
+
+        // 初始化分组信息
+        group: null,
+        paired: false
+      };
+
+      atoms.push(atom);
+    });
+
+    return atoms;
+  }
+
+  // 🔗 第二步：标签-输入框配对
+  pairLabelsWithInputs(atoms) {
+    const pairedAtoms = [...atoms]; // 复制数组
+
+    // 找出所有可能的标签元素
+    const labelElements = this.findAllLabels();
+
+    atoms.forEach(atom => {
+      if (atom.paired) return;
+
+      // 方法1: 通过for属性或包裹关系查找关联标签
+      let associatedLabel = this.findAssociatedLabel(atom.element);
+
+      // 方法2: 通过视觉位置查找最近的标签
+      if (!associatedLabel) {
+        associatedLabel = this.findNearestLabelByPosition(atom, labelElements);
+      }
+
+      if (associatedLabel) {
+        atom.label = {
+          text: associatedLabel.textContent.trim(),
+          element: associatedLabel,
+          bounds: associatedLabel.getBoundingClientRect()
+        };
+        atom.paired = true;
+      }
+    });
+
+    return pairedAtoms;
+  }
+
+  // 📦 第三步：基于LCA和视觉邻近性的对象聚类
+  clusterIntoObjects(atoms) {
+    const objectGroups = [];
+    const processed = new Set();
+
+    atoms.forEach(atomA => {
+      if (processed.has(atomA.id)) return;
+
+      // 以当前原子为起点，寻找邻居
+      const cluster = [atomA];
+      processed.add(atomA.id);
+
+      // 寻找视觉上邻近的原子
+      let hasNewNeighbors = true;
+      while (hasNewNeighbors) {
+        hasNewNeighbors = false;
+
+        const currentBounds = this.calculateClusterBounds(cluster);
+
+        atoms.forEach(atomB => {
+          if (processed.has(atomB.id)) return;
+
+          // 计算视觉邻近度
+          const proximity = this.calculateVisualProximity(currentBounds, atomB.bounds);
+
+          // 如果足够近，计算LCA质量
+          if (proximity < 200) { // 200px阈值，可调整
+            const lcaQuality = this.evaluateLCAQuality([...cluster, atomB]);
+
+            // 如果LCA质量良好，加入集群
+            if (lcaQuality > 0.6) { // 质量阈值，可调整
+              cluster.push(atomB);
+              processed.add(atomB.id);
+              hasNewNeighbors = true;
+            }
+          }
+        });
+      }
+
+      // 只有包含多个原子的cluster才认为是有效对象
+      if (cluster.length > 1) {
+        objectGroups.push({
+          id: `object_${objectGroups.length}`,
+          atoms: cluster,
+          bounds: this.calculateClusterBounds(cluster),
+          signature: this.generateStructureSignature(cluster)
+        });
+      }
+    });
+
+    return objectGroups;
+  }
+
+  // 📋 第四步：通过结构签名识别列表
+  identifyLists(objectGroups) {
+    const listGroups = [];
+    const processedGroups = new Set();
+
+    objectGroups.forEach(groupA => {
+      if (processedGroups.has(groupA.id)) return;
+
+      const similarGroups = [groupA];
+      processedGroups.add(groupA.id);
+
+      // 寻找具有相似结构签名的组
+      objectGroups.forEach(groupB => {
+        if (processedGroups.has(groupB.id)) return;
+
+        const similarity = this.compareStructureSignatures(groupA.signature, groupB.signature);
+
+        if (similarity > 0.8) { // 相似度阈值
+          // 检查是否在视觉上连续排列
+          if (this.areGroupsContinuous(groupA, groupB)) {
+            similarGroups.push(groupB);
+            processedGroups.add(groupB.id);
+          }
+        }
+      });
+
+      // 如果找到多个相似组，认为是列表
+      if (similarGroups.length > 1) {
+        listGroups.push({
+          id: `list_${listGroups.length}`,
+          type: 'list',
+          items: similarGroups,
+          signature: groupA.signature
+        });
+      }
+    });
+
+    return listGroups;
+  }
+
+  // 🏗️ 第五步：递归构建JSON树
+  buildNestedJSON(listGroups, pairedAtoms) {
+    const structure = {
+      fields: {}
+    };
+
+    // 处理列表结构
+    listGroups.forEach(list => {
+      const listName = this.inferListName(list);
+
+      structure.fields[listName] = {
+        type: "array",
+        items: list.items.length,
+        item_structure: {
+          type: "object",
+          fields: {}
+        }
+      };
+
+      // 分析列表项的结构（使用第一项作为模板）
+      if (list.items.length > 0) {
+        const firstItem = list.items[0];
+        firstItem.atoms.forEach(atom => {
+          const fieldName = this.extractAtomFieldName(atom);
+          structure.fields[listName].item_structure.fields[fieldName] = {
+            type: atom.profile.type,
+            selector: atom.selector,
+            label: atom.profile.clues.bestLabel,
+            context_clues: this.buildAtomContextClues(atom)
+          };
+        });
+      }
+    });
+
+    // 处理独立的字段（未被聚类的原子）
+    pairedAtoms.forEach(atom => {
+      if (atom.group === null) {
+        const fieldName = this.extractAtomFieldName(atom);
+        structure.fields[fieldName] = {
+          type: atom.profile.type,
+          selector: atom.selector,
+          label: atom.profile.clues.bestLabel,
+          context_clues: this.buildAtomContextClues(atom)
+        };
+      }
+    });
+
+    return structure;
+  }
+
+  // 🔍 查找所有可能的标签元素
+  findAllLabels() {
+    const labels = [];
+
+    // 查找正式的label元素
+    document.querySelectorAll('label').forEach(label => {
+      if (label.textContent.trim()) {
+        labels.push({
+          element: label,
+          text: label.textContent.trim(),
+          bounds: label.getBoundingClientRect(),
+          type: 'label'
+        });
+      }
+    });
+
+    // 查找可能作为标签的文本元素
+    const textSelectors = 'span, div, p, td, th, legend, h1, h2, h3, h4, h5, h6';
+    document.querySelectorAll(textSelectors).forEach(element => {
+      const text = element.textContent.trim();
+
+      // 过滤掉明显不是标签的文本
+      if (text && text.length < 50 && text.length > 1 &&
+          !text.includes('\n') && // 排除多行文本
+          !/^\d+$/.test(text)) { // 排除纯数字
+
+        labels.push({
+          element: element,
+          text: text,
+          bounds: element.getBoundingClientRect(),
+          type: 'text'
+        });
+      }
+    });
+
+    return labels;
+  }
+
+  // 🔗 查找元素的关联标签（传统方法）
+  findAssociatedLabel(element) {
+    // 方法1: 通过for属性
+    if (element.id) {
+      const label = document.querySelector(`label[for="${element.id}"]`);
+      if (label) return label;
+    }
+
+    // 方法2: 查找包裹的label
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      if (current.tagName === 'LABEL') {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  // 📍 通过视觉位置查找最近的标签
+  findNearestLabelByPosition(atom, labelElements) {
+    let nearestLabel = null;
+    let minDistance = Infinity;
+
+    labelElements.forEach(labelInfo => {
+      const distance = this.calculateDistance(atom.bounds, labelInfo.bounds);
+
+      // 标签应该在输入框的左侧或上方
+      const isLeftOf = labelInfo.bounds.x + labelInfo.bounds.width <= atom.bounds.x + 50;
+      const isAbove = labelInfo.bounds.y + labelInfo.bounds.height <= atom.bounds.centerY;
+      const isAligned = Math.abs(labelInfo.bounds.centerY - atom.bounds.centerY) < 30;
+
+      if ((isLeftOf || isAbove) && (isLeftOf ? isAligned : true) && distance < minDistance && distance < 150) {
+        minDistance = distance;
+        nearestLabel = labelInfo.element;
+      }
+    });
+
+    return nearestLabel;
+  }
+
+  // 📐 计算两个矩形区域的距离
+  calculateDistance(bounds1, bounds2) {
+    const dx = Math.max(0, Math.max(bounds1.x - (bounds2.x + bounds2.width), bounds2.x - (bounds1.x + bounds1.width)));
+    const dy = Math.max(0, Math.max(bounds1.y - (bounds2.y + bounds2.height), bounds2.y - (bounds1.y + bounds1.height)));
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // 📦 计算集群的边界框
+  calculateClusterBounds(cluster) {
+    if (cluster.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity;
+    let maxX = -Infinity, maxY = -Infinity;
+
+    cluster.forEach(atom => {
+      const bounds = atom.bounds;
+      minX = Math.min(minX, bounds.x);
+      minY = Math.min(minY, bounds.y);
+      maxX = Math.max(maxX, bounds.x + bounds.width);
+      maxY = Math.max(maxY, bounds.y + bounds.height);
+    });
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: (minX + maxX) / 2,
+      centerY: (minY + maxY) / 2
+    };
+  }
+
+  // 🎯 计算视觉邻近度
+  calculateVisualProximity(bounds1, bounds2) {
+    return this.calculateDistance(bounds1, bounds2);
+  }
+
+  // 🌳 评估最低公共祖先(LCA)的质量
+  evaluateLCAQuality(atoms) {
+    if (atoms.length < 2) return 0;
+
+    try {
+      // 找到所有原子的LCA
+      const lca = this.findLCA(atoms.map(atom => atom.element));
+      if (!lca) return 0;
+
+      const lcaBounds = lca.getBoundingClientRect();
+      const clusterBounds = this.calculateClusterBounds(atoms);
+
+      // 计算紧凑性：LCA面积 vs 原子总面积
+      const lcaArea = lcaBounds.width * lcaBounds.height;
+      const atomsTotalArea = atoms.reduce((sum, atom) => sum + (atom.bounds.width * atom.bounds.height), 0);
+      const compactness = atomsTotalArea / Math.max(lcaArea, 1);
+
+      // 计算排他性：LCA内表单元素的比例
+      const allChildren = lca.querySelectorAll('*');
+      const formChildren = lca.querySelectorAll('input, select, textarea');
+      const exclusivity = formChildren.length / Math.max(allChildren.length, 1);
+
+      // 综合评分
+      return Math.min(compactness * 0.6 + exclusivity * 0.4, 1.0);
+    } catch (error) {
+      console.warn('LCA质量评估失败:', error);
+      return 0.5; // 返回中等质量作为后备
+    }
+  }
+
+  // 🌳 查找多个元素的最低公共祖先
+  findLCA(elements) {
+    if (elements.length === 0) return null;
+    if (elements.length === 1) return elements[0].parentElement;
+
+    // 获取第一个元素的所有祖先
+    const firstAncestors = [];
+    let current = elements[0];
+    while (current && current !== document.body) {
+      firstAncestors.push(current);
+      current = current.parentElement;
+    }
+
+    // 找到包含所有元素的最低祖先
+    for (const ancestor of firstAncestors) {
+      const containsAll = elements.every(element =>
+        ancestor === element || ancestor.contains(element)
+      );
+
+      if (containsAll) {
+        return ancestor;
+      }
+    }
+
+    return document.body;
+  }
+
+  // 🔤 生成结构签名
+  generateStructureSignature(atoms) {
+    const types = atoms.map(atom => atom.profile.type).sort();
+    const labels = atoms
+      .filter(atom => atom.label)
+      .map(atom => atom.label.text.substring(0, 10))
+      .sort();
+
+    return {
+      types: types.join('_'),
+      labels: labels.join('_'),
+      count: atoms.length
+    };
+  }
+
+  // 🔍 比较结构签名的相似度
+  compareStructureSignatures(sig1, sig2) {
+    if (sig1.count !== sig2.count) return 0;
+
+    const typeSimilarity = sig1.types === sig2.types ? 1 : 0;
+    const labelSimilarity = this.calculateStringSimilarity(sig1.labels, sig2.labels);
+
+    return (typeSimilarity * 0.7 + labelSimilarity * 0.3);
+  }
+
+  // ↔️ 检查两个组是否在视觉上连续
+  areGroupsContinuous(groupA, groupB) {
+    const boundsA = groupA.bounds;
+    const boundsB = groupB.bounds;
+
+    // 检查垂直连续性
+    const verticalGap = Math.min(
+      Math.abs(boundsA.y - (boundsB.y + boundsB.height)),
+      Math.abs(boundsB.y - (boundsA.y + boundsA.height))
+    );
+
+    // 检查水平对齐
+    const horizontalOverlap = Math.max(0,
+      Math.min(boundsA.x + boundsA.width, boundsB.x + boundsB.width) -
+      Math.max(boundsA.x, boundsB.x)
+    );
+
+    return verticalGap < 100 && horizontalOverlap > Math.min(boundsA.width, boundsB.width) * 0.5;
+  }
+
+  // 📝 提取原子的字段名
+  extractAtomFieldName(atom) {
+    // 优先使用配对的标签
+    if (atom.label) {
+      const labelText = atom.label.text;
+      if (this.isValidFieldName(labelText)) {
+        return this.cleanFieldName(labelText);
+      }
+    }
+
+    // 使用已有的字段分析逻辑
+    return this.extractBestFieldName(atom.profile);
+  }
+
+  // 🏷️ 推断列表名称
+  inferListName(list) {
+    // 查找列表周围的标题元素
+    const listBounds = this.calculateClusterBounds(
+      list.items.flatMap(item => item.atoms)
+    );
+
+    // 向上查找标题
+    const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6, legend, .title, .header');
+    let nearestHeading = null;
+    let minDistance = Infinity;
+
+    headings.forEach(heading => {
+      const headingBounds = heading.getBoundingClientRect();
+
+      // 标题应该在列表上方
+      if (headingBounds.y < listBounds.y) {
+        const distance = listBounds.y - (headingBounds.y + headingBounds.height);
+        if (distance < minDistance && distance < 200) {
+          minDistance = distance;
+          nearestHeading = heading;
+        }
+      }
+    });
+
+    if (nearestHeading) {
+      return this.cleanFieldName(nearestHeading.textContent.trim()) || "列表";
+    }
+
+    return `列表_${Date.now() % 1000}`;
+  }
+
+  // 🧩 构建原子的上下文线索
+  buildAtomContextClues(atom) {
+    return {
+      label_text: atom.label ? atom.label.text : '',
+      element_id: atom.profile.clues.id,
+      element_name: atom.profile.clues.name,
+      sibling_text: atom.profile.clues.siblingText,
+      section_header: atom.profile.clues.sectionHeader,
+      visual_position: {
+        x: atom.bounds.x,
+        y: atom.bounds.y
+      }
+    };
+  }
+
+  // 📊 计算字符串相似度（简单版本）
+  calculateStringSimilarity(str1, str2) {
+    if (str1 === str2) return 1;
+    if (!str1 || !str2) return 0;
+
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+
+    if (longer.length === 0) return 1;
+
+    // 计算编辑距离（简化版）
+    const editDistance = this.levenshteinDistance(str1, str2);
+    return (longer.length - editDistance) / longer.length;
+  }
+
+  // 📏 计算编辑距离
+  levenshteinDistance(str1, str2) {
+    const matrix = Array(str2.length + 1).fill().map(() => Array(str1.length + 1).fill(0));
+
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= str2.length; j++) {
+      for (let i = 1; i <= str1.length; i++) {
+        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,
+          matrix[j - 1][i] + 1,
+          matrix[j - 1][i - 1] + cost
+        );
+      }
+    }
+
+    return matrix[str2.length][str1.length];
+  }
+
+  // 🎯 新增：更智能的字段名提取逻辑
+  extractBestFieldName(fieldProfile) {
+    // 优先级顺序：最可信的标签 -> 元素属性 -> 上下文线索 -> 后备选项
+    const candidates = [
+      fieldProfile.clues.bestLabel,
+      fieldProfile.clues.labelFor,
+      fieldProfile.clues.frameworkLabel,
+      fieldProfile.clues.parentLabel,
+      fieldProfile.clues.ariaLabel,
+      fieldProfile.clues.sectionHeader,
+      fieldProfile.clues.siblingText,
+      fieldProfile.clues.name,
+      fieldProfile.clues.id,
+      fieldProfile.clues.placeholder
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate && candidate.trim()) {
+        // 清理和验证候选名称
+        const cleanName = this.cleanFieldName(candidate.trim());
+        if (this.isValidFieldName(cleanName)) {
+          return cleanName;
+        }
+      }
+    }
+
+    // 如果都没有合适的，使用后备名称
+    return `字段_${Date.now() % 10000}`;
+  }
+
+  // 清理字段名
+  cleanFieldName(name) {
+    return name
+      .replace(/[:\*\(\)（）]/g, '') // 移除特殊符号
+      .replace(/\s+/g, '') // 移除空格
+      .substring(0, 20); // 限制长度
+  }
+
+  // 验证字段名是否有效
+  isValidFieldName(name) {
+    if (!name || name.length < 2) return false;
+    if (name.length > 20) return false;
+
+    // 排除无意义的文本
+    const invalidPatterns = [
+      /^\d+[\d_]*$/, // 纯数字或数字+下划线
+      /^[_\-\.]+$/, // 纯符号
+      /请选择|请输入|请填写|如未找到/i, // 提示性文本
+      /^(div|span|input|select|textarea)$/i // HTML标签名
+    ];
+
+    return !invalidPatterns.some(pattern => pattern.test(name));
+  }
+
+
+  // 查找添加按钮
+  findAddButtons(container) {
+    const buttons = [];
+
+    // 查找各种可能的添加按钮
+    const buttonSelectors = [
+      'button[class*="add"], button[class*="新增"], button[class*="添加"]',
+      'a[class*="add"], a[class*="新增"], a[class*="添加"]',
+      '[role="button"][class*="add"]',
+      'button:contains("添加"), button:contains("新增"), button:contains("Add")',
+      '.add-btn, .add-button, .btn-add'
+    ];
+
+    buttonSelectors.forEach(selector => {
+      try {
+        const found = container.querySelectorAll(selector);
+        buttons.push(...found);
+      } catch (e) {
+        // 忽略无效的CSS选择器
+      }
+    });
+
+    // 通过文本内容查找
+    const allButtons = container.querySelectorAll('button, a[role="button"], [class*="btn"]');
+    allButtons.forEach(btn => {
+      const text = btn.textContent?.toLowerCase() || '';
+      if (text.includes('添加') || text.includes('新增') || text.includes('add') || text.includes('+')) {
+        buttons.push(btn);
+      }
+    });
+
+    // 去重
+    return [...new Set(buttons)];
+  }
+
+  // 查找与添加按钮关联的列表容器
+  findAssociatedListContainer(button) {
+    // 1. 查找同级或父级的列表容器
+    let current = button.parentElement;
+
+    while (current && current !== document.body) {
+      // 查找列表容器特征
+      const listContainer = current.querySelector('.list, .items, [class*="list"], [class*="item"]');
+      if (listContainer) {
+        return listContainer;
+      }
+
+      // 检查当前元素本身是否是列表容器
+      if (this.isListContainer(current)) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    // 2. 通过data属性或ID关联查找
+    const targetId = button.getAttribute('data-target') || button.getAttribute('data-list');
+    if (targetId) {
+      return document.querySelector(targetId) || document.getElementById(targetId.replace('#', ''));
+    }
+
+    return null;
+  }
+
+  // 判断是否为列表容器
+  isListContainer(element) {
+    const classList = element.className?.toLowerCase() || '';
+    const tagName = element.tagName?.toLowerCase();
+
+    return (
+      classList.includes('list') ||
+      classList.includes('items') ||
+      classList.includes('container') ||
+      tagName === 'ul' ||
+      tagName === 'ol' ||
+      element.children.length > 1 // 有多个子元素可能是列表
+    );
+  }
+
+  // 查找列表项
+  findListItems(container) {
+    const items = [];
+
+    // 常见的列表项选择器
+    const itemSelectors = [
+      '.item, .list-item',
+      '[class*="item"]',
+      'li',
+      '> div, > section', // 直接子元素
+      '.row'
+    ];
+
+    itemSelectors.forEach(selector => {
+      try {
+        const found = container.querySelectorAll(selector);
+        items.push(...found);
+      } catch (e) {
+        // 忽略无效选择器
+      }
+    });
+
+    // 去重并过滤
+    const uniqueItems = [...new Set(items)].filter(item => {
+      // 确保包含表单元素
+      return item.querySelector('input, textarea, select');
+    });
+
+    return uniqueItems;
+  }
+
+  // 分析列表项结构
+  analyzeListItemStructure(listItem) {
+    const structure = this.identifyNestedFormStructure(listItem);
+
+    // 如果只有简单字段，返回object结构
+    if (Object.keys(structure.fields).length > 0) {
+      return {
+        type: "object",
+        fields: structure.fields
+      };
+    }
+
+    // 如果是单一输入框，返回简单结构（保持更多信息）
+    const singleInput = listItem.querySelector('input, textarea, select');
+    if (singleInput && listItem.querySelectorAll('input, textarea, select').length === 1) {
+      const fieldProfile = this.buildFieldProfile(singleInput, 0);
+      if (fieldProfile) {
+        return {
+          type: singleInput.type || 'text',
+          selector: this.generateUniqueSelector(singleInput),
+          // 🎯 改进：为单一输入框也保留上下文信息
+          label: fieldProfile.clues.bestLabel,
+          placeholder: fieldProfile.clues.placeholder,
+          context_clues: {
+            sibling_text: fieldProfile.clues.siblingText,
+            section_header: fieldProfile.clues.sectionHeader,
+            element_name: fieldProfile.clues.name,
+            element_id: fieldProfile.clues.id
+          }
+        };
+      }
+    }
+
+    return structure;
+  }
+
+  // 辅助方法：判断是否在列表项内
+  isInListItem(element) {
+    let current = element.parentElement;
+
+    while (current && current !== document.body) {
+      if (this.isListItemElement(current)) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+
+    return false;
+  }
+
+  // 判断是否为列表项元素
+  isListItemElement(element) {
+    const classList = element.className?.toLowerCase() || '';
+    const tagName = element.tagName?.toLowerCase();
+
+    return (
+      tagName === 'li' ||
+      classList.includes('item') ||
+      classList.includes('list-item') ||
+      classList.includes('row')
+    );
+  }
+
+
+  // 提取列表名
+  extractListName(button, container) {
+    // 从按钮文本推断
+    const buttonText = button.textContent?.trim();
+    if (buttonText) {
+      const match = buttonText.match(/添加(.+)|新增(.+)|Add\s+(.+)/i);
+      if (match) {
+        return match[1] || match[2] || match[3];
+      }
+    }
+
+    // 从容器属性推断
+    const containerClass = container.className;
+    const containerText = this.findNearestLabel(container);
+
+    return containerText || this.extractMeaningfulName(containerClass) || '列表项';
+  }
+
+  // 提取组名
+  extractGroupName(group, index) {
+    // 从legend或标题推断
+    const legend = group.querySelector('legend');
+    if (legend) {
+      return legend.textContent.trim();
+    }
+
+    // 从标题元素推断
+    const heading = group.querySelector('h1, h2, h3, h4, h5, h6');
+    if (heading) {
+      return heading.textContent.trim();
+    }
+
+    // 从class名推断
+    const className = group.className;
+    const meaningfulName = this.extractMeaningfulName(className);
+
+    return meaningfulName || `字段组${index + 1}`;
+  }
+
+  // 提取有意义的名称
+  extractMeaningfulName(className) {
+    if (!className) return null;
+
+    const meaningfulParts = className.split(/[\s\-_]/).filter(part => {
+      return part.length > 2 && !['form', 'group', 'section', 'container', 'wrapper'].includes(part.toLowerCase());
+    });
+
+    return meaningfulParts.length > 0 ? meaningfulParts[0] : null;
+  }
+
+  // 查找保存按钮
+  findSaveButton(container) {
+    const saveButtons = container.querySelectorAll('button, input[type="submit"], [role="button"]');
+
+    for (const btn of saveButtons) {
+      const text = btn.textContent?.toLowerCase() || btn.value?.toLowerCase() || '';
+      if (text.includes('保存') || text.includes('save') || text.includes('确定') || text.includes('submit')) {
+        return this.generateUniqueSelector(btn);
+      }
+    }
+
+    return null;
+  }
+
+  // 查找最近的标签
+  findNearestLabel(element) {
+    // 向上查找包含文本的父元素
+    let current = element.parentElement;
+
+    while (current && current !== document.body) {
+      const text = current.textContent;
+      if (text && text.length < 50 && text.length > 2) {
+        // 排除包含过多文本的元素
+        const childrenText = Array.from(current.children).map(child => child.textContent).join('');
+        const ownText = text.replace(childrenText, '').trim();
+
+        if (ownText && ownText.length > 0) {
+          return ownText;
+        }
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  // 更新嵌套字段显示
+  updateNestedFieldsDisplay() {
+    const statusPanel = document.querySelector('#ai-resume-status-panel');
+    if (!statusPanel) {
+      console.warn('🤖 AI Resume: 找不到状态面板，无法显示嵌套按钮');
+      return;
+    }
+
+    // 添加嵌套模式切换按钮
+    let nestedModeBtn = statusPanel.querySelector('#nested-mode-btn');
+    if (!nestedModeBtn) {
+      nestedModeBtn = document.createElement('button');
+      nestedModeBtn.id = 'nested-mode-btn';
+      nestedModeBtn.style.cssText = `
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 10px;
+        width: 100%;
+        font-size: 14px;
+      `;
+
+      nestedModeBtn.addEventListener('click', () => this.toggleNestedMode());
+
+      const autoFillBtn = statusPanel.querySelector('#auto-fill-btn');
+      if (autoFillBtn) {
+        autoFillBtn.parentNode.insertBefore(nestedModeBtn, autoFillBtn.nextSibling);
+        console.log('🤖 AI Resume: 嵌套模式按钮已添加到页面');
+      } else {
+        // 如果找不到自动填写按钮，就添加到状态面板的末尾
+        statusPanel.appendChild(nestedModeBtn);
+        console.log('🤖 AI Resume: 嵌套模式按钮已添加到状态面板末尾');
+      }
+    }
+
+    // 根据扫描状态更新按钮文本和样式
+    if (this.nestedFormStructure && Object.keys(this.nestedFormStructure.fields || {}).length > 0) {
+      const fieldCount = this.countNestedFields(this.nestedFormStructure);
+      nestedModeBtn.textContent = `🎯 嵌套填写 (${fieldCount}个字段)`;
+      nestedModeBtn.style.background = '#007bff';
+    } else {
+      nestedModeBtn.textContent = '🔍 扫描嵌套结构';
+      nestedModeBtn.style.background = '#28a745';
+    }
+  }
+
+  // 🔢 统计视觉聚类识别的字段数量（适配新结构）
+  countNestedFields(structure) {
+    let count = 0;
+
+    if (!structure || !structure.fields) {
+      return count;
+    }
+
+    Object.values(structure.fields).forEach(field => {
+      if (field.type === 'array') {
+        // 数组字段：计算所有项的字段数
+        if (field.item_structure && field.item_structure.fields) {
+          const itemFieldsCount = Object.keys(field.item_structure.fields).length;
+          count += itemFieldsCount * (field.items || 1);
+        }
+      } else {
+        // 独立字段
+        count++;
+      }
+    });
+
+    return count;
+  }
+
+  // 切换嵌套模式
+  toggleNestedMode() {
+    if (!this.nestedFormStructure || Object.keys(this.nestedFormStructure.fields || {}).length === 0) {
+      this.scanNestedFormStructure();
+    } else {
+      this.startNestedAutoFill();
+    }
+  }
+
+  // 🎯 新增：开始嵌套自动填写
+  async startNestedAutoFill() {
+    try {
+      console.log('🤖 AI Resume: 开始嵌套自动填写...');
+
+      if (!this.nestedFormStructure || Object.keys(this.nestedFormStructure.fields || {}).length === 0) {
+        this.showMessage('请先扫描嵌套表单结构', 'warning');
+        return;
+      }
+
+      // 检查用户认证状态
+      console.log('🤖 AI Resume: 检查用户认证状态...');
+      const authResult = await this.sendMessageToBackground({ action: 'checkAuthStatus' });
+
+      if (!authResult || !authResult.success || !authResult.isAuthenticated) {
+        this.showMessage('请先在插件中登录账户', 'warning');
+        return;
+      }
+
+      // 获取用户简历数据
+      console.log('🤖 AI Resume: 获取用户简历数据...');
+      const resumeResult = await this.sendMessageToBackground({ action: 'getResume' });
+
+      if (!resumeResult || !resumeResult.success) {
+        this.showMessage('获取简历数据失败: ' + (resumeResult?.error || '未知错误'), 'error');
+        return;
+      }
+
+      if (!resumeResult.data) {
+        this.showMessage('请先在插件中创建和设置简历信息', 'warning');
+        return;
+      }
+
+      const resumeId = resumeResult.data.id;
+      if (!resumeId) {
+        this.showMessage('简历数据格式错误，缺少ID', 'error');
+        return;
+      }
+
+      console.log('🤖 AI Resume: 发送嵌套表单结构进行AI匹配...', this.nestedFormStructure);
+      this.showMessage('正在进行嵌套结构AI智能匹配...', 'info');
+
+      // 发送嵌套表单结构到后端进行AI匹配
+      const matchResult = await this.sendMessageToBackground({
+        action: 'matchNestedFields',
+        formStructure: this.nestedFormStructure,
+        resumeId: resumeId,
+        websiteUrl: window.location.href
+      });
+
+      if (!matchResult || !matchResult.success) {
+        const errorMsg = matchResult ? matchResult.error : '网络连接失败';
+        this.showMessage('嵌套AI匹配失败: ' + errorMsg, 'error');
+        return;
+      }
+
+      console.log('🤖 AI Resume: 嵌套AI匹配成功', matchResult.data);
+
+      const { matched_data, total_fields, matched_fields } = matchResult.data;
+      this.showMessage(
+        `嵌套AI匹配完成！成功匹配 ${matched_fields}/${total_fields} 个字段，开始填写...`,
+        'success'
+      );
+
+      // 执行嵌套填写
+      await this.fillNestedStructure(matched_data, this.nestedFormStructure.fields);
+
+    } catch (error) {
+      console.error('🤖 AI Resume: 嵌套自动填写失败:', error);
+      this.showMessage('嵌套自动填写失败: ' + error.message, 'error');
+    }
+  }
+
+  // 递归填写嵌套结构
+  async fillNestedStructure(data, structure, containerSelector = 'body') {
+    console.log('🔄 AI Resume: 开始递归填写嵌套结构', { data, structure });
+
+    for (const [fieldName, fieldData] of Object.entries(data)) {
+      const fieldConfig = structure[fieldName];
+
+      if (!fieldConfig) {
+        console.warn(`🤖 AI Resume: 未找到字段配置: ${fieldName}`);
+        continue;
+      }
+
+      try {
+        if (fieldConfig.type === 'object') {
+          // 递归填写嵌套对象
+          console.log(`📂 AI Resume: 填写对象字段: ${fieldName}`);
+          await this.fillNestedStructure(fieldData, fieldConfig.fields, containerSelector);
+
+        } else if (fieldConfig.type === 'array') {
+          // 填写数组字段
+          console.log(`📋 AI Resume: 填写数组字段: ${fieldName}，项目数: ${fieldData?.length || 0}`);
+          await this.fillArrayField(fieldData, fieldConfig, containerSelector);
+
+        } else {
+          // 填写简单字段
+          console.log(`📝 AI Resume: 填写简单字段: ${fieldName} = ${fieldData}`);
+          await this.fillSimpleField(fieldData, fieldConfig, containerSelector);
+        }
+
+        // 添加延迟，避免操作过快
+        await this.sleep(200);
+
+      } catch (error) {
+        console.error(`🤖 AI Resume: 填写字段 ${fieldName} 失败:`, error);
+        // 继续填写其他字段，不中断整个流程
+      }
+    }
+
+    console.log('✅ AI Resume: 嵌套结构填写完成');
+  }
+
+  // 填写数组字段
+  async fillArrayField(items, fieldConfig, parentContainer) {
+    if (!Array.isArray(items) || items.length === 0) {
+      console.log('📋 AI Resume: 数组字段为空，跳过');
+      return;
+    }
+
+    console.log(`📋 AI Resume: 开始填写数组字段，需要 ${items.length} 项`);
+
+    const container = document.querySelector(fieldConfig.container);
+    if (!container) {
+      console.error(`🤖 AI Resume: 找不到数组容器: ${fieldConfig.container}`);
+      return;
+    }
+
+    // 获取现有项目数
+    const existingItemsCount = fieldConfig.existing_items_count || 0;
+
+    for (let i = 0; i < items.length; i++) {
+      console.log(`📋 AI Resume: 填写数组项 ${i + 1}/${items.length}`);
+
+      // 如果需要添加新项，点击添加按钮
+      if (i >= existingItemsCount) {
+        console.log('➕ AI Resume: 点击添加按钮创建新项');
+        const success = await this.clickAddButton(fieldConfig.add_button);
+        if (!success) {
+          console.error('🤖 AI Resume: 点击添加按钮失败');
+          break;
+        }
+
+        // 等待DOM更新
+        await this.waitForDOMUpdate();
+      }
+
+      // 获取当前项的容器
+      const currentItemContainer = this.getCurrentItemContainer(container, i);
+      if (!currentItemContainer) {
+        console.error(`🤖 AI Resume: 找不到第 ${i + 1} 项的容器`);
+        continue;
+      }
+
+      const currentItemSelector = this.generateUniqueSelector(currentItemContainer);
+
+      if (fieldConfig.item_structure.type === 'object') {
+        // 递归填写对象类型的数组项
+        await this.fillNestedStructure(
+          items[i],
+          fieldConfig.item_structure.fields,
+          currentItemSelector
+        );
+      } else {
+        // 填写简单类型的数组项
+        await this.fillSimpleField(
+          items[i],
+          fieldConfig.item_structure,
+          currentItemSelector
+        );
+      }
+
+      // 如果有保存按钮，点击保存
+      if (fieldConfig.save_button) {
+        console.log('💾 AI Resume: 点击保存按钮');
+        await this.clickSaveButton(fieldConfig.save_button, i);
+        await this.waitForSave();
+      }
+
+      // 添加延迟
+      await this.sleep(300);
+    }
+
+    console.log('✅ AI Resume: 数组字段填写完成');
+  }
+
+  // 点击添加按钮
+  async clickAddButton(buttonSelector) {
+    try {
+      const button = document.querySelector(buttonSelector);
+      if (!button) {
+        console.error(`🤖 AI Resume: 找不到添加按钮: ${buttonSelector}`);
+        return false;
+      }
+
+      // 检查按钮是否可点击
+      if (button.disabled || button.style.display === 'none') {
+        console.warn('🤖 AI Resume: 添加按钮不可用');
+        return false;
+      }
+
+      // 滚动到按钮位置
+      button.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await this.sleep(500);
+
+      // 点击按钮
+      button.click();
+
+      // 触发各种事件确保兼容性
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      console.log('✅ AI Resume: 成功点击添加按钮');
+      return true;
+
+    } catch (error) {
+      console.error('🤖 AI Resume: 点击添加按钮失败:', error);
+      return false;
+    }
+  }
+
+  // 等待DOM更新
+  async waitForDOMUpdate() {
+    return new Promise(resolve => {
+      // 使用MutationObserver监听DOM变化
+      const observer = new MutationObserver((mutations) => {
+        if (mutations.length > 0) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      // 最多等待3秒
+      setTimeout(() => {
+        observer.disconnect();
+        resolve();
+      }, 3000);
+    });
+  }
+
+  // 获取当前项的容器
+  getCurrentItemContainer(container, index) {
+    const items = this.findListItems(container);
+
+    if (index < items.length) {
+      return items[index];
+    }
+
+    // 如果找不到对应索引的项，返回最后一项（可能是刚添加的）
+    return items.length > 0 ? items[items.length - 1] : null;
+  }
+
+  // 点击保存按钮
+  async clickSaveButton(buttonSelector, itemIndex) {
+    try {
+      const button = document.querySelector(buttonSelector);
+      if (!button) {
+        console.warn(`🤖 AI Resume: 找不到保存按钮: ${buttonSelector}`);
+        return false;
+      }
+
+      button.click();
+      console.log(`💾 AI Resume: 成功点击保存按钮 (项目 ${itemIndex + 1})`);
+      return true;
+
+    } catch (error) {
+      console.error('🤖 AI Resume: 点击保存按钮失败:', error);
+      return false;
+    }
+  }
+
+  // 等待保存完成
+  async waitForSave() {
+    // 简单的延迟等待，实际项目中可以监听网络请求或UI变化
+    await this.sleep(1000);
+  }
+
+  // 填写简单字段（带容器范围限制）
+  async fillSimpleField(value, fieldConfig, containerSelector = 'body') {
+    if (!value || !fieldConfig.selector) {
+      return;
+    }
+
+    try {
+      // 构建限定范围的选择器
+      let fullSelector = fieldConfig.selector;
+      if (containerSelector !== 'body') {
+        fullSelector = `${containerSelector} ${fieldConfig.selector}`;
+      }
+
+      const element = document.querySelector(fullSelector);
+      if (!element) {
+        console.warn(`🤖 AI Resume: 找不到字段元素: ${fullSelector}`);
+        return;
+      }
+
+      // 滚动到元素位置
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await this.sleep(200);
+
+      // 根据元素类型填写
+      if (element.tagName === 'SELECT') {
+        await this.fillSelectField(element, value);
+      } else if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') {
+        await this.fillInputField(element, value);
+      }
+
+      console.log(`✅ AI Resume: 成功填写字段: ${fieldConfig.label || fieldConfig.selector} = ${value}`);
+
+    } catch (error) {
+      console.error(`🤖 AI Resume: 填写字段失败: ${fieldConfig.selector}`, error);
+    }
+  }
+
+  // 填写输入框
+  async fillInputField(element, value) {
+    // 聚焦元素
+    element.focus();
+    await this.sleep(100);
+
+    // 清空现有内容
+    element.value = '';
+
+    // 设置新值
+    element.value = value;
+
+    // 触发各种事件确保兼容性
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    element.dispatchEvent(new Event('blur', { bubbles: true }));
+  }
+
+  // 填写选择框
+  async fillSelectField(element, value) {
+    // 查找匹配的选项
+    const options = Array.from(element.options);
+    let targetOption = null;
+
+    // 精确匹配
+    targetOption = options.find(opt => opt.text.trim() === value || opt.value === value);
+
+    // 如果没有精确匹配，尝试模糊匹配
+    if (!targetOption) {
+      targetOption = options.find(opt =>
+        opt.text.includes(value) || value.includes(opt.text.trim())
+      );
+    }
+
+    if (targetOption) {
+      element.value = targetOption.value;
+      element.selectedIndex = targetOption.index;
+
+      // 触发change事件
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+
+      console.log(`✅ AI Resume: 选择了选项: ${targetOption.text}`);
+    } else {
+      console.warn(`🤖 AI Resume: 在选择框中找不到匹配选项: ${value}`);
+    }
+  }
+
+  // 睡眠函数
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // 生成唯一选择器（调用现有的方法）
+  generateUniqueSelector(element) {
+    return this.generateUniqueCssSelector(element);
   }
 
   // 🥇 为字段建立完整档案 - 多层启发式策略核心

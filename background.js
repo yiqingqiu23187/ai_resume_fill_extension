@@ -158,6 +158,18 @@ class APIManager {
     });
   }
 
+  // 🎯 新增：嵌套字段匹配
+  static async matchNestedFields(formStructure, resumeId, websiteUrl) {
+    return await this.makeRequest('/matching/match-nested-fields', {
+      method: 'POST',
+      body: JSON.stringify({
+        resume_id: resumeId,
+        form_structure: formStructure,
+        website_url: websiteUrl
+      })
+    });
+  }
+
   // 验证激活码
   static async validateActivationCode(code) {
     return await this.makeRequest('/activation/validate', {
@@ -240,6 +252,15 @@ async function handleMessage(request, sender, sendResponse) {
           request.websiteUrl
         );
         sendResponse(matchResult);
+        break;
+
+      case 'matchNestedFields':
+        const nestedMatchResult = await APIManager.matchNestedFields(
+          request.formStructure,
+          request.resumeId,
+          request.websiteUrl
+        );
+        sendResponse(nestedMatchResult);
         break;
 
       case 'activateCode':
