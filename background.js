@@ -158,6 +158,18 @@ class APIManager {
     });
   }
 
+  // 🎯 HTML分析
+  static async analyzeHTML(htmlContent, resumeId, websiteUrl) {
+    return await this.makeRequest('/matching/analyze-html', {
+      method: 'POST',
+      body: JSON.stringify({
+        resume_id: resumeId,
+        html_content: htmlContent,
+        website_url: websiteUrl
+      })
+    });
+  }
+
   // 验证激活码
   static async validateActivationCode(code) {
     return await this.makeRequest('/activation/validate', {
@@ -240,6 +252,15 @@ async function handleMessage(request, sender, sendResponse) {
           request.websiteUrl
         );
         sendResponse(matchResult);
+        break;
+
+      case 'analyzeHTML':
+        const analyzeResult = await APIManager.analyzeHTML(
+          request.data.html_content,
+          request.data.resume_id,
+          request.data.website_url
+        );
+        sendResponse(analyzeResult);
         break;
 
       case 'activateCode':

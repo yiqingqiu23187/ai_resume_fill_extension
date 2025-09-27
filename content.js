@@ -135,9 +135,12 @@ class FormFieldScanner {
             <span id="fill-progress">0/0</span>
           </div>
         </div>
-        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-          <button id="scan-fields-btn" style="flex: 1; padding: 8px 16px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; cursor: pointer;">扫描表单</button>
-          <button id="auto-fill-btn" style="flex: 1; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;" disabled>开始填写</button>
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+          <button id="scan-fields-btn" style="flex: 1; padding: 8px 12px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; cursor: pointer; font-size: 12px;">传统扫描</button>
+          <button id="analyze-html-btn" style="flex: 1; padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🎯 AI分析</button>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <button id="auto-fill-btn" style="width: 100%; padding: 10px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;" disabled>开始智能填写</button>
         </div>
         <div id="field-list" style="max-height: 300px; overflow-y: auto;">
           <!-- 字段列表 -->
@@ -152,6 +155,7 @@ class FormFieldScanner {
       // 绑定事件
       panel.querySelector('#panel-close').addEventListener('click', () => this.hidePanel());
       panel.querySelector('#scan-fields-btn').addEventListener('click', () => this.scanFormFields());
+      panel.querySelector('#analyze-html-btn').addEventListener('click', () => this.analyzeHTMLWithLLM());
       panel.querySelector('#auto-fill-btn').addEventListener('click', () => this.startAutoFill());
 
       console.log('🤖 AI Resume: 状态面板已创建');
@@ -291,6 +295,166 @@ class FormFieldScanner {
       console.error('🤖 AI Resume: 扫描字段时发生错误:', error);
       this.showMessage('扫描表单字段失败: ' + error.message, 'error');
     }
+  }
+
+  // 🎯 新增：HTML分析方法 - 发送给大模型分析
+  async analyzeHTMLWithLLM() {
+    try {
+      console.log('🤖 AI Resume: 开始HTML智能分析...');
+      this.showMessage('正在使用AI分析页面结构...', 'info');
+
+      // 🔐 首先检查用户登录状态
+      const authResponse = await this.sendMessageToBackground({
+        action: 'checkAuthStatus'
+      });
+
+      if (!authResponse.success || !authResponse.isAuthenticated) {
+        this.showMessage('请先登录以使用AI分析功能', 'error');
+        return;
+      }
+
+      // 获取当前页面的HTML
+      const htmlContent = document.documentElement.outerHTML;
+      console.log(`📄 页面HTML长度: ${htmlContent.length}`);
+
+      // 获取用户简历ID（自动获取第一份简历）
+      const resumeId = await this.getSelectedResumeId();
+      if (!resumeId) {
+        this.showMessage('未找到简历数据，请先登录并创建简历', 'error');
+        return;
+      }
+
+      // 发送到后端进行分析
+      const response = await this.sendMessageToBackground({
+        action: 'analyzeHTML',
+        data: {
+          html_content: htmlContent,
+          resume_id: resumeId,
+          website_url: window.location.href
+        }
+      });
+
+      if (response.success) {
+        console.log('🎉 AI HTML分析成功:', response.data);
+
+        // 存储分析结果
+        this.analyzedFields = response.data.analyzed_fields || [];
+        this.formStructure = response.data.form_structure || {};
+
+        // 更新显示
+        this.updateAnalysisDisplay(response.data);
+
+        const fieldCount = this.analyzedFields.length;
+
+        this.showMessage(
+          `🎯 AI分析完成！识别到 ${fieldCount} 个字段，点击"开始智能填写"进行自动填写`,
+          'success'
+        );
+
+        // 启用自动填写按钮
+        const autoFillBtn = document.querySelector('#auto-fill-btn');
+        if (autoFillBtn) {
+          autoFillBtn.disabled = false;
+          autoFillBtn.style.background = '#667eea';
+        }
+
+      } else {
+        console.error('❌ AI HTML分析失败:', response.error);
+        this.showMessage(`AI分析失败: ${response.error}`, 'error');
+      }
+
+    } catch (error) {
+      console.error('🤖 AI Resume: HTML分析时发生错误:', error);
+      this.showMessage('HTML分析失败: ' + error.message, 'error');
+    }
+  }
+
+  // 获取选中的简历ID
+  async getSelectedResumeId() {
+    // 🎯 首先尝试从localStorage获取
+    let resumeId = localStorage.getItem('selected_resume_id');
+
+    // 🚀 如果没有，则自动获取用户的第一份简历
+    if (!resumeId) {
+      try {
+        console.log('🔍 正在获取用户的第一份简历...');
+
+        // 调用background获取简历数据
+        const response = await this.sendMessageToBackground({
+          action: 'getResume'
+        });
+
+        if (response.success && response.data && response.data.id) {
+          resumeId = response.data.id;
+          // 缓存到localStorage，避免重复请求
+          localStorage.setItem('selected_resume_id', resumeId);
+          console.log('✅ 获取到简历ID:', resumeId);
+        } else {
+          console.warn('⚠️ 用户暂无简历数据:', response);
+          return null;
+        }
+      } catch (error) {
+        console.error('❌ 获取简历ID失败:', error);
+        return null;
+      }
+    }
+
+    return resumeId;
+  }
+
+  // 更新分析结果显示
+  updateAnalysisDisplay(analysisData) {
+    // 更新字段数量显示
+    this.updateFieldsDisplay();
+
+    // 在状态面板中显示分析结果
+    const statusPanel = document.querySelector('#ai-resume-status-panel');
+    if (statusPanel) {
+      // 查找或创建结果显示区域
+      let resultsDiv = statusPanel.querySelector('#analysis-results');
+      if (!resultsDiv) {
+        resultsDiv = document.createElement('div');
+        resultsDiv.id = 'analysis-results';
+        resultsDiv.style.cssText = `
+          margin-top: 15px;
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          background: #f9f9f9;
+          max-height: 200px;
+          overflow-y: auto;
+        `;
+        statusPanel.appendChild(resultsDiv);
+      }
+
+      // 按分类显示字段
+      const categories = analysisData.form_structure || {};
+      let html = '<div style="font-size: 12px;">';
+
+      Object.keys(categories).forEach(category => {
+        const fields = categories[category] || [];
+        if (fields.length > 0) {
+          html += `<div style="margin-bottom: 8px;">`;
+          html += `<strong>${this.getCategoryName(category)}:</strong> `;
+          html += `<span style="color: #666;">${fields.length}个字段</span>`;
+          html += `</div>`;
+        }
+      });
+
+      html += '</div>';
+      resultsDiv.innerHTML = html;
+    }
+  }
+
+  // 获取分类中文名称
+  getCategoryName(category) {
+    const names = {
+      'basic_info': '基本信息',
+      'education': '教育经历',
+      'work_experience': '工作经验',
+      'other': '其他'
+    };
+    return names[category] || category;
   }
 
   // 🥇 为字段建立完整档案 - 多层启发式策略核心
@@ -893,126 +1057,22 @@ class FormFieldScanner {
     try {
       console.log('🤖 AI Resume: 开始自动填写...');
 
-      // 检查是否有扫描到的字段
-      if (this.scannedFields.length === 0) {
-        this.showMessage('请先扫描表单字段', 'warning');
+      // 检查是否有AI分析的结果
+      if (!this.analyzedFields || this.analyzedFields.length === 0) {
+        this.showMessage('请先点击"🎯 AI分析"分析页面表单', 'warning');
         return;
       }
 
-      // 检查用户认证状态
-      console.log('🤖 AI Resume: 检查用户认证状态...');
-      const authResult = await this.sendMessageToBackground({ action: 'checkAuthStatus' });
+      console.log('🤖 AI Resume: 开始填写AI分析的字段...', this.analyzedFields);
 
-      if (!authResult || !authResult.success || !authResult.isAuthenticated) {
-        this.showMessage('请先在插件中登录账户', 'warning');
-        return;
-      }
-
-      // 获取用户简历数据
-      console.log('🤖 AI Resume: 获取用户简历数据...');
-      const resumeResult = await this.sendMessageToBackground({ action: 'getResume' });
-
-      if (!resumeResult || !resumeResult.success) {
-        this.showMessage('获取简历数据失败: ' + (resumeResult?.error || '未知错误'), 'error');
-        return;
-      }
-
-      if (!resumeResult.data) {
-        this.showMessage('请先在插件中创建和设置简历信息', 'warning');
-        return;
-      }
-
-      console.log('🤖 AI Resume: 简历数据获取成功', resumeResult.data);
-
-      // 从简历数据中提取resumeId
-      let resumeId = null;
-      if (resumeResult.data && resumeResult.data.id) {
-        resumeId = resumeResult.data.id;
-      }
-
-      if (!resumeId) {
-        this.showMessage('简历数据格式错误，缺少ID。请重新保存简历', 'error');
-        console.error('🤖 AI Resume: 简历数据缺少ID:', resumeResult.data);
-        return;
-      }
-
-      // 准备字段信息用于AI匹配 - 新的多层启发式数据格式
-      const fieldsForMatching = this.scannedFields.map((field, index) => ({
-        // 基本字段信息
-        name: field.clues.name || field.clues.id || `field_${index}`,
-        type: field.type,
-        label: field.clues.bestLabel,
-        placeholder: field.clues.placeholder,
-        required: field.attributes?.required || false,
-
-        // 选项 (对于select元素)
-        options: field.options?.map(opt => opt.text || opt.value) || [],
-
-        // 定位信息
-        selector: field.selector,
-        xpath: null,
-
-         // 🔍 丰富的上下文线索 - 这是关键改进！
-         context_clues: {
-           // 🥇 最可靠的语义链接
-           label_for: field.clues.labelFor,
-           framework_label: field.clues.frameworkLabel, // 🎯 新增：框架标签
-           parent_label: field.clues.parentLabel,
-
-           // 🥈 元素自身描述
-           aria_label: field.clues.ariaLabel,
-           title: field.clues.title,
-
-           // 🥉 命名约定
-           element_id: field.clues.id,
-           element_name: field.clues.name,
-           class_name: field.clues.className,
-
-           // 🔍 上下文线索
-           sibling_text: field.clues.siblingText,
-           parent_text: field.clues.parentText?.substring(0, 100), // 限制长度
-           section_header: field.clues.sectionHeader,
-
-           // 元素标签和类型
-           tag_name: field.tag,
-           input_type: field.type
-         }
-      }));
-
-      console.log('🤖 AI Resume: 发送字段信息进行AI匹配...', fieldsForMatching);
-      this.showMessage('正在进行AI智能匹配...', 'info');
-
-      // 发送字段信息到后端进行AI匹配
-      const matchResult = await this.sendMessageToBackground({
-        action: 'matchFields',
-        fields: fieldsForMatching,
-        resumeId: resumeId,
-        websiteUrl: window.location.href
-      });
-
-      if (!matchResult || !matchResult.success) {
-        const errorMsg = matchResult ? matchResult.error : '网络连接失败';
-        this.showMessage('AI匹配失败: ' + errorMsg, 'error');
-        return;
-      }
-
-      console.log('🤖 AI Resume: AI匹配成功', matchResult.data);
-
-      // 检查匹配结果
-      const matchData = matchResult.data;
-      if (!matchData || !matchData.matches) {
-        this.showMessage('AI匹配返回数据格式错误', 'error');
-        return;
-      }
-
-      const { matches, total_fields, matched_fields } = matchData;
+      // 显示开始填写的消息
       this.showMessage(
-        `AI匹配完成！成功匹配 ${matched_fields}/${total_fields} 个字段，开始填写...`,
-        'success'
+        `开始填写 ${this.analyzedFields.length} 个字段...`,
+        'info'
       );
 
       // 执行填写
-      await this.fillFields(matches);
+      await this.fillAnalyzedFields(this.analyzedFields);
 
     } catch (error) {
       console.error('🤖 AI Resume: 自动填写失败:', error);
@@ -1386,6 +1446,135 @@ class FormFieldScanner {
         messageEl.parentNode.removeChild(messageEl);
       }
     }, 4000);
+  }
+
+  // 🎯 新增：填写AI分析的字段
+  async fillAnalyzedFields(analyzedFields) {
+    if (!analyzedFields || analyzedFields.length === 0) {
+      this.showMessage('没有可填写的字段', 'warning');
+      return;
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    const totalCount = analyzedFields.length;
+
+    console.log('🤖 AI Resume: 开始填写AI分析的字段，总数:', totalCount);
+
+    for (let i = 0; i < analyzedFields.length; i++) {
+      const field = analyzedFields[i];
+
+      try {
+        console.log(`🤖 AI Resume: 正在填写字段 ${i + 1}/${totalCount}:`, field);
+
+        // 根据selector定位元素
+        const element = document.querySelector(field.selector);
+        if (!element) {
+          console.log(`🤖 AI Resume: 无法找到元素: ${field.selector}`);
+          failedCount++;
+          continue;
+        }
+
+        // 跳过空值字段
+        if (!field.matched_value && field.matched_value !== 0 && field.matched_value !== false) {
+          console.log(`🤖 AI Resume: 字段 ${field.name} 值为空，跳过`);
+          continue;
+        }
+
+        // 滚动到元素位置
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await this.delay(200);
+
+        // 聚焦元素
+        element.focus();
+        await this.delay(100);
+
+        // 根据字段类型进行填写
+        const success = await this.fillFieldByType(element, field.type, field.matched_value);
+
+        if (success) {
+          successCount++;
+          console.log(`🤖 AI Resume: 字段 ${field.name} 填写成功: ${field.matched_value}`);
+        } else {
+          failedCount++;
+          console.log(`🤖 AI Resume: 字段 ${field.name} 填写失败`);
+        }
+
+        // 更新进度显示
+        this.showMessage(
+          `正在填写... ${i + 1}/${totalCount} (成功: ${successCount}, 失败: ${failedCount})`,
+          'info'
+        );
+
+        // 延迟避免操作过快
+        await this.delay(300);
+
+      } catch (error) {
+        console.error(`🤖 AI Resume: 填写字段 ${field.name} 时发生错误:`, error);
+        failedCount++;
+      }
+    }
+
+    // 显示完成结果
+    const resultMessage = `填写完成！成功 ${successCount} 个，失败 ${failedCount} 个`;
+    this.showMessage(resultMessage, successCount > 0 ? 'success' : 'warning');
+    console.log(`🤖 AI Resume: ${resultMessage}`);
+  }
+
+  // 🎯 新增：根据字段类型填写值
+  async fillFieldByType(element, fieldType, value) {
+    try {
+      switch (fieldType.toLowerCase()) {
+        case 'input':
+          return await this.fillInputField(element, value, element.type);
+
+        case 'select':
+          return await this.fillSelectField(element, value);
+
+        case 'textarea':
+          return await this.fillTextareaField(element, value);
+
+        case 'radio':
+          return await this.fillRadioField(element, value);
+
+        default:
+          console.log(`🤖 AI Resume: 不支持的字段类型: ${fieldType}`);
+          return false;
+      }
+    } catch (error) {
+      console.error(`🤖 AI Resume: 填写字段时发生错误:`, error);
+      return false;
+    }
+  }
+
+  // 🎯 新增：填写单选按钮
+  async fillRadioField(element, value) {
+    try {
+      // 如果element就是正确的radio按钮，直接选中
+      if (element.type === 'radio') {
+        element.checked = true;
+        this.triggerInputEvent(element);
+        return true;
+      }
+
+      // 否则根据name查找对应的radio按钮
+      const radioName = element.name || element.getAttribute('name');
+      if (radioName) {
+        const radioButtons = document.querySelectorAll(`input[type="radio"][name="${radioName}"]`);
+        for (const radio of radioButtons) {
+          if (radio.value === value || radio.nextSibling?.textContent?.trim() === value) {
+            radio.checked = true;
+            this.triggerInputEvent(radio);
+            return true;
+          }
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error('填写radio字段失败:', error);
+      return false;
+    }
   }
 }
 
