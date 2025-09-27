@@ -74,9 +74,19 @@ class PopupApp {
       quickResume: document.getElementById('quick-resume'),
       quickActivation: document.getElementById('quick-activation'),
 
+      // 字段管理
+      addFieldBtn: document.getElementById('add-field-btn'),
+      addFieldModal: document.getElementById('add-field-modal'),
+      addFieldForm: document.getElementById('add-field-form'),
+      fieldKey: document.getElementById('field-key'),
+      fieldLabel: document.getElementById('field-label'),
+      modalClose: document.querySelector('.modal-close'),
+      cancelFieldBtn: document.getElementById('cancel-field-btn'),
+
       // 简历表单
       resumeForm: document.getElementById('resume-form'),
       saveResumeBtn: document.getElementById('save-resume-btn'),
+      resetResumeBtn: document.getElementById('reset-resume-btn'),
 
       // 激活码
       activationCode: document.getElementById('activation-code'),
@@ -138,10 +148,39 @@ class PopupApp {
       this.switchTab('activation');
     });
 
+    // 字段管理事件
+    this.elements.addFieldBtn.addEventListener('click', () => {
+      this.showAddFieldModal();
+    });
+
+    this.elements.addFieldForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.addCustomField();
+    });
+
+    this.elements.modalClose.addEventListener('click', () => {
+      this.hideAddFieldModal();
+    });
+
+    this.elements.cancelFieldBtn.addEventListener('click', () => {
+      this.hideAddFieldModal();
+    });
+
+    // 点击模态框外部关闭
+    this.elements.addFieldModal.addEventListener('click', (e) => {
+      if (e.target === this.elements.addFieldModal) {
+        this.hideAddFieldModal();
+      }
+    });
+
     // 简历表单
     this.elements.resumeForm.addEventListener('submit', (e) => {
       e.preventDefault();
       this.saveResume();
+    });
+
+    this.elements.resetResumeBtn.addEventListener('click', () => {
+      this.resetResumeForm();
     });
 
     // 激活码
@@ -175,6 +214,9 @@ class PopupApp {
     } finally {
       this.state.loading = false;
       this.hideLoading();
+
+      // 初始化模板系统
+      this.initializeTemplateSystem();
     }
   }
 
@@ -233,12 +275,18 @@ class PopupApp {
         const resume = result.data;
 
         if (resume.fields && typeof resume.fields === 'object') {
-          Object.keys(this.state.resumeData).forEach(key => {
-            if (resume.fields[key] !== undefined) {
-              this.state.resumeData[key] = resume.fields[key];
-            }
-          });
-          this.populateResumeForm();
+          // 更新状态数据
+          this.state.resumeData = { ...this.state.resumeData, ...resume.fields };
+
+          // 如果使用新的模板系统，等待模板加载后再填充数据
+          if (window.resumeTemplateManager) {
+            this.populateTemplateForm(resume.fields);
+          } else {
+            // 使用传统方法填充表单
+            this.populateResumeForm();
+          }
+
+          this.showMessage('简历数据加载成功', 'success');
         } else {
           // 如果没有fields但有field_count，说明数据可能有问题
           if (resume.field_count && resume.field_count > 0) {
@@ -254,6 +302,17 @@ class PopupApp {
       console.error('加载简历数据失败:', error);
       this.showMessage('加载简历数据失败', 'error');
     }
+  }
+
+  // 填充模板表单数据
+  populateTemplateForm(resumeData) {
+    // 遍历所有表单字段并填充数据
+    Object.keys(resumeData).forEach(key => {
+      const element = document.querySelector(`[name="${key}"]`);
+      if (element && resumeData[key]) {
+        element.value = resumeData[key];
+      }
+    });
   }
 
   // 用户登录
@@ -595,6 +654,221 @@ class PopupApp {
     setTimeout(() => {
       this.elements.message.classList.add('hidden');
     }, 3000);
+  }
+
+  // ===== 简化的模板管理方法 =====
+
+  // 初始化模板系统
+  initializeTemplateSystem() {
+    if (window.resumeTemplateManager) {
+      this.loadTemplate();
+      console.log('简历模板系统初始化完成');
+    } else {
+      console.warn('模板管理器未加载，使用默认表单');
+    }
+  }
+
+  // 加载模板
+  loadTemplate() {
+    if (!window.resumeTemplateManager) return;
+
+    try {
+      this.renderTemplate();
+      this.setupFieldEvents();
+      this.updateStats();
+    } catch (error) {
+      console.error('加载模板失败:', error);
+    }
+  }
+
+  // 渲染模板
+  renderTemplate() {
+    const form = this.elements.resumeForm;
+    const formActions = form.querySelector('.form-actions');
+
+    // 清除现有内容（保留操作按钮）
+    const sectionsToRemove = form.querySelectorAll('.form-section');
+    sectionsToRemove.forEach(section => section.remove());
+
+    // 渲染各个分类
+    Object.keys(window.resumeTemplateManager.template).forEach(categoryKey => {
+      const category = window.resumeTemplateManager.template[categoryKey];
+      const sectionHTML = window.resumeTemplateManager.generateCategoryHTML(categoryKey);
+      formActions.insertAdjacentHTML('beforebegin', sectionHTML);
+    });
+
+    // 渲染自定义字段（如果有）
+    const customHTML = window.resumeTemplateManager.generateCustomFieldsHTML();
+    if (customHTML) {
+      formActions.insertAdjacentHTML('beforebegin', customHTML);
+    }
+  }
+
+  // 设置字段事件
+  setupFieldEvents() {
+    // 分类折叠/展开事件
+    document.querySelectorAll('.section-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const target = btn.getAttribute('data-target');
+        const content = document.getElementById(`section-${target}`);
+        const isCollapsed = content.classList.contains('collapsed');
+
+        if (isCollapsed) {
+          content.classList.remove('collapsed');
+          btn.textContent = '收起';
+        } else {
+          content.classList.add('collapsed');
+          btn.textContent = '展开';
+        }
+      });
+    });
+
+    // 字段删除事件（仅自定义字段）
+    document.querySelectorAll('.field-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.deleteCustomField(btn);
+      });
+    });
+  }
+
+  // 删除自定义字段
+  deleteCustomField(deleteBtn) {
+    const fieldItem = deleteBtn.closest('.field-item');
+    const fieldKey = fieldItem.getAttribute('data-field-key');
+
+    if (confirm('确定要删除这个字段吗？')) {
+      if (window.resumeTemplateManager.removeCustomField(fieldKey)) {
+        fieldItem.classList.add('removing');
+        setTimeout(() => {
+          fieldItem.remove();
+          this.updateStats();
+        }, 300);
+      }
+    }
+  }
+
+  // 显示添加字段模态框
+  showAddFieldModal() {
+    this.elements.addFieldModal.classList.remove('hidden');
+    this.elements.fieldKey.focus();
+  }
+
+  // 隐藏添加字段模态框
+  hideAddFieldModal() {
+    this.elements.addFieldModal.classList.add('hidden');
+    this.elements.addFieldForm.reset();
+  }
+
+  // 添加自定义字段
+  addCustomField() {
+    try {
+      const key = this.elements.fieldKey.value.trim();
+      const label = this.elements.fieldLabel.value.trim();
+
+      if (!key || !label) {
+        this.showMessage('请填写字段名称和显示标签', 'error');
+        return;
+      }
+
+      // 添加字段
+      window.resumeTemplateManager.addCustomField(key, label);
+
+      // 重新渲染模板
+      this.loadTemplate();
+
+      // 高亮新添加的字段
+      setTimeout(() => {
+        const newField = document.querySelector(`[data-field-key="${key}"]`);
+        if (newField) {
+          newField.classList.add('adding');
+          newField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+
+      this.hideAddFieldModal();
+      this.showMessage('自定义字段添加成功！', 'success');
+
+    } catch (error) {
+      this.showMessage(error.message, 'error');
+    }
+  }
+
+  // 重置简历表单
+  resetResumeForm() {
+    if (confirm('确定要重置表单吗？这将清空所有已填写的内容。')) {
+      this.elements.resumeForm.reset();
+      this.showMessage('表单已重置', 'info');
+    }
+  }
+
+  // 更新统计信息
+  updateStats() {
+    if (!window.resumeTemplateManager) return;
+
+    const stats = window.resumeTemplateManager.getStats();
+    const templateSection = document.querySelector('.template-section');
+
+    let statsDiv = templateSection.querySelector('.template-stats');
+    if (!statsDiv) {
+      statsDiv = document.createElement('div');
+      statsDiv.className = 'template-stats';
+      templateSection.appendChild(statsDiv);
+    }
+
+    statsDiv.innerHTML = `
+      <div class="stats-item">
+        <span>总字段:</span>
+        <span class="stats-badge">${stats.total}</span>
+      </div>
+      <div class="stats-item">
+        <span>自定义:</span>
+        <span class="stats-badge">${stats.custom}</span>
+      </div>
+      <div class="stats-item">
+        <span>分类:</span>
+        <span class="stats-badge">${stats.categories}</span>
+      </div>
+    `;
+  }
+
+  // 重写保存简历方法
+  async saveResume() {
+    const formData = new FormData(this.elements.resumeForm);
+    const resumeData = {};
+
+    // 收集所有表单数据
+    for (let [key, value] of formData.entries()) {
+      if (value.trim()) { // 只保存有值的字段
+        resumeData[key] = value.trim();
+        this.state.resumeData[key] = value.trim();
+      }
+    }
+
+    this.setButtonLoading(this.elements.saveResumeBtn, true, '保存中...');
+
+    try {
+      const result = await this.sendMessage({
+        action: 'updateResume',
+        resumeData: {
+          title: '我的简历',
+          fields: resumeData
+        }
+      });
+
+      if (result.success) {
+        this.showMessage('简历信息保存成功！', 'success');
+        this.updateStats();
+      } else {
+        this.showMessage(result.error || '保存失败', 'error');
+      }
+    } catch (error) {
+      console.error('保存简历失败:', error);
+      this.showMessage('保存失败，请重试', 'error');
+    } finally {
+      this.setButtonLoading(this.elements.saveResumeBtn, false, '保存简历信息');
+    }
   }
 }
 

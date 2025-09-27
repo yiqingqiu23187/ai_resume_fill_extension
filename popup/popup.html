@@ -167,138 +167,58 @@
           <p>请填写您的简历信息，用于自动匹配表单字段</p>
         </div>
 
+        <!-- 简历模板说明 -->
+        <div class="template-section">
+          <div class="template-info">
+            <h4>📝 简历信息填写</h4>
+            <p class="template-hint">
+              <span class="info-icon">💡</span>
+              所有字段均为<strong>选填</strong>，填写的信息越完整，AI填写表单时越准确。
+              如果某些字段完全没有填写而招聘网站要求，插件无法杜撰相关信息。
+            </p>
+          </div>
+          <div class="template-actions">
+            <button type="button" id="add-field-btn" class="btn-secondary">+ 添加自定义字段</button>
+          </div>
+        </div>
+
         <form id="resume-form" class="resume-form">
-          <div class="form-section">
-            <h4>基本信息</h4>
-            <div class="form-row">
-              <div class="form-group">
-                <label>姓名</label>
-                <input type="text" name="name" placeholder="请输入姓名">
-              </div>
-              <div class="form-group">
-                <label>性别</label>
-                <select name="gender">
-                  <option value="">请选择</option>
-                  <option value="男">男</option>
-                  <option value="女">女</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>手机号码</label>
-                <input type="tel" name="phone" placeholder="请输入手机号">
-              </div>
-              <div class="form-group">
-                <label>邮箱地址</label>
-                <input type="email" name="email" placeholder="请输入邮箱">
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>出生日期</label>
-              <input type="date" name="birthDate">
-            </div>
-
-            <div class="form-group">
-              <label>现居地址</label>
-              <input type="text" name="address" placeholder="请输入现居地址">
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h4>教育背景</h4>
-            <div class="form-row">
-              <div class="form-group">
-                <label>学历</label>
-                <select name="education">
-                  <option value="">请选择</option>
-                  <option value="高中">高中</option>
-                  <option value="专科">专科</option>
-                  <option value="本科">本科</option>
-                  <option value="硕士">硕士</option>
-                  <option value="博士">博士</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>毕业院校</label>
-                <input type="text" name="school" placeholder="请输入毕业院校">
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>专业</label>
-                <input type="text" name="major" placeholder="请输入专业">
-              </div>
-              <div class="form-group">
-                <label>毕业时间</label>
-                <input type="month" name="graduationDate">
-              </div>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h4>工作经验</h4>
-            <div class="form-row">
-              <div class="form-group">
-                <label>工作年限</label>
-                <select name="workYears">
-                  <option value="">请选择</option>
-                  <option value="应届毕业生">应届毕业生</option>
-                  <option value="1年以下">1年以下</option>
-                  <option value="1-3年">1-3年</option>
-                  <option value="3-5年">3-5年</option>
-                  <option value="5-10年">5-10年</option>
-                  <option value="10年以上">10年以上</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>期望薪资</label>
-                <input type="text" name="expectedSalary" placeholder="如：10-15K">
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>最近工作单位</label>
-              <input type="text" name="currentCompany" placeholder="请输入最近工作单位">
-            </div>
-
-            <div class="form-group">
-              <label>职位</label>
-              <input type="text" name="position" placeholder="请输入职位">
-            </div>
-          </div>
-
-          <div class="form-section">
-            <h4>个人技能</h4>
-            <div class="form-group">
-              <label>专业技能</label>
-              <textarea
-                name="skills"
-                placeholder="请输入您的专业技能，用逗号分隔"
-                rows="3"
-              ></textarea>
-            </div>
-
-            <div class="form-group">
-              <label>自我评价</label>
-              <textarea
-                name="selfIntroduction"
-                placeholder="请简单介绍一下您的个人特点和优势"
-                rows="4"
-              ></textarea>
-            </div>
-          </div>
+          <!-- 动态生成的表单内容将插入这里 -->
 
           <div class="form-actions">
             <button type="submit" id="save-resume-btn" class="btn-primary">
               <span id="save-resume-text">保存简历信息</span>
             </button>
+            <button type="button" id="reset-resume-btn" class="btn-secondary">重置</button>
           </div>
         </form>
       </div>
+
+        <!-- 添加字段弹窗 -->
+        <div id="add-field-modal" class="modal hidden">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h4>添加自定义字段</h4>
+              <button type="button" class="modal-close">&times;</button>
+            </div>
+            <form id="add-field-form" class="modal-body">
+              <div class="form-group">
+                <label>字段名称 (Key)</label>
+                <input type="text" id="field-key" placeholder="如：github_url" required>
+                <small>建议使用英文和下划线，如：github_url, project_link</small>
+              </div>
+              <div class="form-group">
+                <label>显示标签 (Label)</label>
+                <input type="text" id="field-label" placeholder="如：GitHub地址" required>
+                <small>用户看到的字段名称</small>
+              </div>
+            </form>
+            <div class="modal-footer">
+              <button type="button" class="btn-secondary" id="cancel-field-btn">取消</button>
+              <button type="submit" form="add-field-form" class="btn-primary">添加字段</button>
+            </div>
+          </div>
+        </div>
 
       <!-- 激活码管理页面 -->
       <div id="activation-content" class="tab-content hidden">
@@ -349,6 +269,7 @@
     </div>
   </div>
 
+  <script src="resumeTemplateManager.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
