@@ -146,17 +146,7 @@ class APIManager {
     }
   }
 
-  // 字段匹配
-  static async matchFields(fields, resumeId, websiteUrl) {
-    return await this.makeRequest('/matching/match-fields', {
-      method: 'POST',
-      body: JSON.stringify({
-        resume_id: resumeId,
-        form_fields: fields,
-        website_url: websiteUrl
-      })
-    });
-  }
+  // 注意：已删除 matchFields 方法，现在只使用 analyzeHTML 方法
 
   // 🎯 HTML分析
   static async analyzeHTML(htmlContent, resumeId, websiteUrl) {
@@ -245,14 +235,7 @@ async function handleMessage(request, sender, sendResponse) {
         sendResponse(updateResult);
         break;
 
-      case 'matchFields':
-        const matchResult = await APIManager.matchFields(
-          request.fields,
-          request.resumeId,
-          request.websiteUrl
-        );
-        sendResponse(matchResult);
-        break;
+      // 注意：已删除 matchFields 处理，现在只使用 analyzeHTML
 
       case 'analyzeHTML':
         const analyzeResult = await APIManager.analyzeHTML(

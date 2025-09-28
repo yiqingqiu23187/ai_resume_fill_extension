@@ -158,8 +158,8 @@ POST /api/auth/register
 GET /api/resume
 PUT /api/resume
 
-// 字段匹配（核心功能）
-POST /api/match-fields
+// HTML分析和字段匹配（核心功能）
+POST /api/matching/analyze-html
 
 // 激活码管理
 POST /api/activation/activate

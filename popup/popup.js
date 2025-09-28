@@ -276,17 +276,18 @@ class PopupApp {
 
         if (resume.fields && typeof resume.fields === 'object') {
           // 更新状态数据
-          this.state.resumeData = { ...this.state.resumeData, ...resume.fields };
+          this.state.resumeData = resume.fields;
 
-          // 如果使用新的模板系统，等待模板加载后再填充数据
+          // 使用新的模板系统填充结构化数据
           if (window.resumeTemplateManager) {
-            this.populateTemplateForm(resume.fields);
+            // 等待模板加载完成后再填充数据
+            setTimeout(() => {
+              window.resumeTemplateManager.populateFormData(resume.fields);
+              this.showMessage('简历数据加载成功', 'success');
+            }, 100);
           } else {
-            // 使用传统方法填充表单
-            this.populateResumeForm();
+            this.showMessage('模板管理器未加载', 'error');
           }
-
-          this.showMessage('简历数据加载成功', 'success');
         } else {
           // 如果没有fields但有field_count，说明数据可能有问题
           if (resume.field_count && resume.field_count > 0) {
@@ -304,16 +305,6 @@ class PopupApp {
     }
   }
 
-  // 填充模板表单数据
-  populateTemplateForm(resumeData) {
-    // 遍历所有表单字段并填充数据
-    Object.keys(resumeData).forEach(key => {
-      const element = document.querySelector(`[name="${key}"]`);
-      if (element && resumeData[key]) {
-        element.value = resumeData[key];
-      }
-    });
-  }
 
   // 用户登录
   async login() {
@@ -833,27 +824,27 @@ class PopupApp {
     `;
   }
 
-  // 重写保存简历方法
+  // 重写保存简历方法 - 使用结构化数据
   async saveResume() {
-    const formData = new FormData(this.elements.resumeForm);
-    const resumeData = {};
-
-    // 收集所有表单数据
-    for (let [key, value] of formData.entries()) {
-      if (value.trim()) { // 只保存有值的字段
-        resumeData[key] = value.trim();
-        this.state.resumeData[key] = value.trim();
-      }
+    if (!window.resumeTemplateManager) {
+      this.showMessage('模板管理器未加载', 'error');
+      return;
     }
 
     this.setButtonLoading(this.elements.saveResumeBtn, true, '保存中...');
 
     try {
+      // 使用模板管理器收集结构化数据
+      const resumeData = window.resumeTemplateManager.collectFormData();
+
+      // 更新本地状态
+      this.state.resumeData = resumeData;
+
       const result = await this.sendMessage({
         action: 'updateResume',
         resumeData: {
           title: '我的简历',
-          fields: resumeData
+          fields: resumeData  // 这里是结构化的嵌套JSON，而不是打平的数据
         }
       });
 
