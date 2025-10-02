@@ -1,61 +1,101 @@
 {
   "manifest_version": 3,
-  "name": "AI Resume AutoFill",
-  "version": "1.0.0",
-  "description": "AI驱动的智能简历自动填写插件，支持各类招聘网站表单的自动识别和填写",
+  "name": "AI简历智能填写助手",
+  "version": "2.0.0",
+  "description": "基于视觉驱动分析的智能简历填写插件，支持主流招聘网站的表单自动识别和填写",
 
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "tabs",
+    "background"
   ],
 
   "host_permissions": [
     "http://localhost:8000/*",
-    "https://*/*"
+    "https://*.zhaopin.com/*",
+    "https://*.51job.com/*",
+    "https://*.lagou.com/*",
+    "https://*.liepin.com/*",
+    "https://*.boss.com/*",
+    "https://*.58.com/*",
+    "https://*.chinahr.com/*",
+    "https://*.jobui.com/*",
+    "https://*.jobcn.com/*",
+    "https://*.job1001.com/*"
   ],
 
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background-enhanced.js",
+    "type": "module"
   },
 
   "content_scripts": [
     {
       "matches": [
-        "https://*/*",
-        "http://*/*"
+        "https://*.zhaopin.com/*",
+        "https://*.51job.com/*",
+        "https://*.lagou.com/*",
+        "https://*.liepin.com/*",
+        "https://*.boss.com/*",
+        "https://*.58.com/*",
+        "https://*.chinahr.com/*",
+        "https://*.jobui.com/*",
+        "https://*.jobcn.com/*",
+        "https://*.job1001.com/*"
       ],
-      "js": ["content.js"],
-      "css": ["content.css"],
-      "run_at": "document_end"
+      "js": ["content-main.js"],
+      "run_at": "document_idle"
     }
   ],
 
   "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "AI Resume AutoFill"
+    "default_popup": "popup.html",
+    "default_title": "AI简历智能填写助手",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
 
   "icons": {
-    "16": "icons/icon-16.png",
-    "32": "icons/icon-32.png",
-    "48": "icons/icon-48.png",
-    "128": "icons/icon-128.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
 
   "web_accessible_resources": [
     {
       "resources": [
-        "inject.js",
-        "popup/popup.html"
+        "modules/utils/*.js",
+        "modules/core/*.js",
+        "modules/visual/*.js",
+        "config/*.json",
+        "styles/*.css",
+        "icons/*.png"
       ],
       "matches": [
-        "<all_urls>"
+        "https://*.zhaopin.com/*",
+        "https://*.51job.com/*",
+        "https://*.lagou.com/*",
+        "https://*.liepin.com/*",
+        "https://*.boss.com/*",
+        "https://*.58.com/*",
+        "https://*.chinahr.com/*",
+        "https://*.jobui.com/*",
+        "https://*.jobcn.com/*",
+        "https://*.job1001.com/*"
       ]
     }
   ],
 
+  "options_page": "options.html",
+
+  "minimum_chrome_version": "88",
+
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:8000 https://dashscope.aliyuncs.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://localhost:8000 https://* 'self';"
   }
 }

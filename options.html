@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI简历智能填写助手 - 设置</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 30px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .logo-icon {
+      font-size: 32px;
+      margin-right: 12px;
+    }
+
+    .logo-text {
+      font-size: 24px;
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .settings-group {
+      margin-bottom: 30px;
+    }
+
+    .settings-group h3 {
+      color: #2c3e50;
+      margin-bottom: 15px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .setting-item:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      flex: 1;
+    }
+
+    .setting-label h4 {
+      margin: 0 0 5px 0;
+      font-size: 16px;
+      color: #333;
+    }
+
+    .setting-label p {
+      margin: 0;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .setting-control {
+      margin-left: 20px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #3498db;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+
+    .save-button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .save-button:hover {
+      background-color: #2980b9;
+    }
+
+    .version-info {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+      color: #666;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="logo-icon">🤖</span>
+      <span class="logo-text">AI简历智能填写助手 - 设置</span>
+    </div>
+
+    <div class="settings-group">
+      <h3>基本设置</h3>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h4>自动填写模式</h4>
+          <p>开启后将在检测到表单时自动填写简历信息</p>
+        </div>
+        <div class="setting-control">
+          <label class="toggle-switch">
+            <input type="checkbox" id="auto-fill" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h4>智能识别</h4>
+          <p>使用AI视觉分析增强表单字段识别准确率</p>
+        </div>
+        <div class="setting-control">
+          <label class="toggle-switch">
+            <input type="checkbox" id="ai-recognition" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h4>填写提示</h4>
+          <p>显示填写结果和匹配度提示信息</p>
+        </div>
+        <div class="setting-control">
+          <label class="toggle-switch">
+            <input type="checkbox" id="show-hints" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>高级设置</h3>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h4>调试模式</h4>
+          <p>开启后显示详细的分析日志和调试信息</p>
+        </div>
+        <div class="setting-control">
+          <label class="toggle-switch">
+            <input type="checkbox" id="debug-mode">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <h4>数据缓存</h4>
+          <p>本地缓存简历数据以提高填写速度</p>
+        </div>
+        <div class="setting-control">
+          <label class="toggle-switch">
+            <input type="checkbox" id="enable-cache" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <button class="save-button" id="save-settings">保存设置</button>
+
+    <div class="version-info">
+      <p>AI简历智能填写助手 v2.0.0</p>
+      <p>基于视觉驱动分析的智能简历填写插件</p>
+    </div>
+  </div>
+
+  <script>
+    // 加载设置
+    document.addEventListener('DOMContentLoaded', function() {
+      chrome.storage.sync.get([
+        'autoFill',
+        'aiRecognition',
+        'showHints',
+        'debugMode',
+        'enableCache'
+      ], function(result) {
+        document.getElementById('auto-fill').checked = result.autoFill !== false;
+        document.getElementById('ai-recognition').checked = result.aiRecognition !== false;
+        document.getElementById('show-hints').checked = result.showHints !== false;
+        document.getElementById('debug-mode').checked = result.debugMode === true;
+        document.getElementById('enable-cache').checked = result.enableCache !== false;
+      });
+    });
+
+    // 保存设置
+    document.getElementById('save-settings').addEventListener('click', function() {
+      const settings = {
+        autoFill: document.getElementById('auto-fill').checked,
+        aiRecognition: document.getElementById('ai-recognition').checked,
+        showHints: document.getElementById('show-hints').checked,
+        debugMode: document.getElementById('debug-mode').checked,
+        enableCache: document.getElementById('enable-cache').checked
+      };
+
+      chrome.storage.sync.set(settings, function() {
+        // 显示保存成功提示
+        const button = document.getElementById('save-settings');
+        const originalText = button.textContent;
+        button.textContent = '已保存';
+        button.style.backgroundColor = '#27ae60';
+
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.backgroundColor = '#3498db';
+        }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>

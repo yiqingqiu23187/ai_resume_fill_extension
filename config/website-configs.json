@@ -1,0 +1,230 @@
+{
+  "default": {
+    "name": "默认配置",
+    "analysis_config": {
+      "xy_cut_threshold": 10,
+      "morphology_kernel_size": 20,
+      "min_region_size": 50,
+      "similarity_threshold": 0.8
+    },
+    "selectors": {
+      "form_containers": ["form", ".form", "[role='form']", ".resume-form", ".info-form"],
+      "input_elements": ["input", "textarea", "select"],
+      "label_elements": ["label", ".label", ".field-label", ".form-label"],
+      "exclude_elements": [".captcha", ".verification", ".search", "#search", ".navbar", ".header", ".footer"]
+    },
+    "timing": {
+      "wait_after_load": 2000,
+      "wait_between_fills": 300,
+      "scroll_delay": 500
+    },
+    "features": {
+      "enable_debug_overlay": false,
+      "auto_fill_after_analysis": true,
+      "fallback_to_traditional": true,
+      "highlight_matched_fields": true,
+      "save_analysis_results": true
+    }
+  },
+
+  "zhaopin.com": {
+    "name": "智联招聘",
+    "analysis_config": {
+      "xy_cut_threshold": 15,
+      "morphology_kernel_size": 25,
+      "min_region_size": 60,
+      "similarity_threshold": 0.75
+    },
+    "selectors": {
+      "form_containers": [".resume-form", ".info-form", ".personal-info", ".base-info"],
+      "input_elements": ["input", "textarea", "select", ".input-text"],
+      "label_elements": [".label", ".form-label", ".item-label", "dt"],
+      "exclude_elements": [".captcha", ".verification", ".navbar", ".footer", ".sidebar"]
+    },
+    "timing": {
+      "wait_after_load": 3000,
+      "wait_between_fills": 500,
+      "scroll_delay": 800
+    },
+    "field_mappings": {
+      "姓名": ["name", "userName", "realName"],
+      "手机": ["mobile", "phone", "phoneNumber"],
+      "邮箱": ["email", "emailAddress"],
+      "性别": ["gender", "sex"],
+      "出生日期": ["birthday", "birthDate"],
+      "工作经验": ["workExp", "experience"],
+      "教育经历": ["education", "educationBackground"]
+    }
+  },
+
+  "51job.com": {
+    "name": "前程无忧",
+    "analysis_config": {
+      "xy_cut_threshold": 12,
+      "morphology_kernel_size": 22,
+      "min_region_size": 45,
+      "similarity_threshold": 0.8
+    },
+    "selectors": {
+      "form_containers": [".form", ".resume-form", ".baseinfo", ".form-group"],
+      "input_elements": ["input", "textarea", "select"],
+      "label_elements": [".label", ".form-label", ".title", "label"],
+      "exclude_elements": [".ad", ".advertisement", ".login-form", ".search-form"]
+    },
+    "timing": {
+      "wait_after_load": 2500,
+      "wait_between_fills": 400,
+      "scroll_delay": 600
+    },
+    "field_mappings": {
+      "姓名": ["name", "truename"],
+      "手机号": ["mobile", "mobileno"],
+      "邮箱": ["email"],
+      "性别": ["sex"],
+      "生日": ["birthday"],
+      "现居住地": ["location", "address"]
+    }
+  },
+
+  "lagou.com": {
+    "name": "拉勾网",
+    "analysis_config": {
+      "xy_cut_threshold": 8,
+      "morphology_kernel_size": 18,
+      "min_region_size": 40,
+      "similarity_threshold": 0.85
+    },
+    "selectors": {
+      "form_containers": [".form-container", ".resume-form", ".user-form"],
+      "input_elements": ["input", "textarea", "select", ".lg-input"],
+      "label_elements": [".label", ".form-label", ".lg-label"],
+      "exclude_elements": [".header", ".footer", ".nav", ".sidebar"]
+    },
+    "timing": {
+      "wait_after_load": 2000,
+      "wait_between_fills": 350,
+      "scroll_delay": 500
+    }
+  },
+
+  "boss.com": {
+    "name": "BOSS直聘",
+    "analysis_config": {
+      "xy_cut_threshold": 10,
+      "morphology_kernel_size": 20,
+      "min_region_size": 50,
+      "similarity_threshold": 0.8
+    },
+    "selectors": {
+      "form_containers": [".form", ".resume-form", ".user-info"],
+      "input_elements": ["input", "textarea", "select"],
+      "label_elements": [".label", ".form-label", ".field-name"],
+      "exclude_elements": [".header", ".footer", ".nav"]
+    },
+    "timing": {
+      "wait_after_load": 2500,
+      "wait_between_fills": 400,
+      "scroll_delay": 600
+    }
+  },
+
+  "liepin.com": {
+    "name": "猎聘",
+    "analysis_config": {
+      "xy_cut_threshold": 12,
+      "morphology_kernel_size": 24,
+      "min_region_size": 55,
+      "similarity_threshold": 0.75
+    },
+    "selectors": {
+      "form_containers": [".form", ".resume-edit", ".personal-form"],
+      "input_elements": ["input", "textarea", "select", ".form-control"],
+      "label_elements": [".control-label", ".form-label", "label"],
+      "exclude_elements": [".navbar", ".footer", ".sidebar", ".ad"]
+    },
+    "timing": {
+      "wait_after_load": 3000,
+      "wait_between_fills": 500,
+      "scroll_delay": 700
+    }
+  },
+
+  "58.com": {
+    "name": "58同城",
+    "analysis_config": {
+      "xy_cut_threshold": 14,
+      "morphology_kernel_size": 26,
+      "min_region_size": 50,
+      "similarity_threshold": 0.7
+    },
+    "selectors": {
+      "form_containers": [".form", ".resume-form", ".info-form"],
+      "input_elements": ["input", "textarea", "select"],
+      "label_elements": [".label", ".form-label", ".item-name"],
+      "exclude_elements": [".header", ".footer", ".nav", ".ad-box"]
+    },
+    "timing": {
+      "wait_after_load": 2800,
+      "wait_between_fills": 450,
+      "scroll_delay": 650
+    }
+  },
+
+  "development": {
+    "name": "开发调试模式",
+    "analysis_config": {
+      "xy_cut_threshold": 5,
+      "morphology_kernel_size": 15,
+      "min_region_size": 30,
+      "similarity_threshold": 0.9
+    },
+    "selectors": {
+      "form_containers": ["form", ".form", "[role='form']"],
+      "input_elements": ["input", "textarea", "select"],
+      "label_elements": ["label", ".label", ".form-label"],
+      "exclude_elements": [".debug", ".test"]
+    },
+    "timing": {
+      "wait_after_load": 1000,
+      "wait_between_fills": 100,
+      "scroll_delay": 200
+    },
+    "features": {
+      "enable_debug_overlay": true,
+      "auto_fill_after_analysis": false,
+      "fallback_to_traditional": true,
+      "highlight_matched_fields": true,
+      "save_analysis_results": true,
+      "verbose_logging": true
+    }
+  },
+
+  "testing": {
+    "name": "测试模式",
+    "analysis_config": {
+      "xy_cut_threshold": 8,
+      "morphology_kernel_size": 18,
+      "min_region_size": 35,
+      "similarity_threshold": 0.85
+    },
+    "selectors": {
+      "form_containers": ["form", ".form", ".test-form"],
+      "input_elements": ["input", "textarea", "select"],
+      "label_elements": ["label", ".label"],
+      "exclude_elements": []
+    },
+    "timing": {
+      "wait_after_load": 500,
+      "wait_between_fills": 50,
+      "scroll_delay": 100
+    },
+    "features": {
+      "enable_debug_overlay": true,
+      "auto_fill_after_analysis": false,
+      "fallback_to_traditional": true,
+      "highlight_matched_fields": true,
+      "save_analysis_results": false,
+      "verbose_logging": true
+    }
+  }
+}
