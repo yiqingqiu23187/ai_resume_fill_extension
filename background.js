@@ -160,6 +160,17 @@ class APIManager {
     });
   }
 
+  // 🎯 字段匹配（方案二）
+  static async matchFields(fields, resumeId) {
+    return await this.makeRequest('/matching/match-fields', {
+      method: 'POST',
+      body: JSON.stringify({
+        fields: fields,
+        resume_id: resumeId
+      })
+    });
+  }
+
   // 验证激活码
   static async validateActivationCode(code) {
     return await this.makeRequest('/activation/validate', {
@@ -244,6 +255,14 @@ async function handleMessage(request, sender, sendResponse) {
           request.data.website_url
         );
         sendResponse(analyzeResult);
+        break;
+
+      case 'matchFields':
+        const matchResult = await APIManager.matchFields(
+          request.data.fields,
+          request.data.resume_id
+        );
+        sendResponse(matchResult);
         break;
 
       case 'activateCode':

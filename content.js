@@ -137,7 +137,10 @@ class FormFieldScanner {
         </div>
         <div style="display: flex; gap: 8px; margin-bottom: 16px;">
           <button id="scan-fields-btn" style="flex: 1; padding: 8px 12px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; cursor: pointer; font-size: 12px;">传统扫描</button>
-          <button id="analyze-html-btn" style="flex: 1; padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🎯 AI分析</button>
+          <button id="smart-match-btn" style="flex: 1; padding: 8px 12px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🚀 智能匹配</button>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+          <button id="analyze-html-btn" style="flex: 1; padding: 8px 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">🎯 AI分析(旧)</button>
         </div>
         <div style="margin-bottom: 16px;">
           <button id="auto-fill-btn" style="width: 100%; padding: 10px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;" disabled>开始智能填写</button>
@@ -155,6 +158,7 @@ class FormFieldScanner {
       // 绑定事件
       panel.querySelector('#panel-close').addEventListener('click', () => this.hidePanel());
       panel.querySelector('#scan-fields-btn').addEventListener('click', () => this.scanFormFields());
+      panel.querySelector('#smart-match-btn').addEventListener('click', () => this.smartMatchFields());
       panel.querySelector('#analyze-html-btn').addEventListener('click', () => this.analyzeHTMLWithLLM());
       panel.querySelector('#auto-fill-btn').addEventListener('click', () => this.startAutoFill());
 
@@ -366,6 +370,100 @@ class FormFieldScanner {
     } catch (error) {
       console.error('🤖 AI Resume: HTML分析时发生错误:', error);
       this.showMessage('HTML分析失败: ' + error.message, 'error');
+    }
+  }
+
+  // 🚀 新增：智能匹配字段（方案二）
+  async smartMatchFields() {
+    try {
+      console.log('🚀 AI Resume: 开始智能字段匹配...');
+      this.showMessage('正在智能匹配字段...', 'info');
+
+      // 1. 先扫描字段
+      await this.scanFormFields();
+
+      if (!this.scannedFields || this.scannedFields.length === 0) {
+        this.showMessage('未找到可填写的字段', 'warning');
+        return;
+      }
+
+      // 2. 检查登录状态
+      const authResponse = await this.sendMessageToBackground({
+        action: 'checkAuthStatus'
+      });
+
+      if (!authResponse.success || !authResponse.isAuthenticated) {
+        this.showMessage('请先登录以使用智能匹配功能', 'error');
+        return;
+      }
+
+      // 3. 获取简历ID
+      const resumeId = await this.getSelectedResumeId();
+      if (!resumeId) {
+        this.showMessage('未找到简历数据，请先登录并创建简历', 'error');
+        return;
+      }
+
+      // 4. 准备字段数据（只保留必要字段）
+      const fieldsToMatch = this.scannedFields.map(f => {
+        const fieldData = {
+          selector: f.selector,
+          label: f.label
+        };
+
+        // 只在有值时才添加 placeholder
+        if (f.attributes?.placeholder || f.clues?.placeholder) {
+          fieldData.placeholder = f.attributes.placeholder || f.clues.placeholder;
+        }
+
+        // 只在有选项时才添加 options（且简化为文本数组）
+        if (f.options && f.options.length > 0) {
+          fieldData.options = f.options.map(opt => opt.text);
+        }
+
+        return fieldData;
+      });
+
+      console.log('📤 发送字段数据:', fieldsToMatch);
+
+      // 5. 调用后端匹配接口
+      const response = await this.sendMessageToBackground({
+        action: 'matchFields',
+        data: {
+          fields: fieldsToMatch,
+          resume_id: resumeId
+        }
+      });
+
+      if (response.success) {
+        console.log('🎉 AI匹配成功:', response.data);
+
+        // 存储匹配结果
+        this.matchedFields = response.data.matched_fields || [];
+
+        this.showMessage(
+          `🎉 智能匹配完成！成功匹配 ${this.matchedFields.length} 个字段`,
+          'success'
+        );
+
+        // 启用填写按钮
+        const autoFillBtn = document.querySelector('#auto-fill-btn');
+        if (autoFillBtn) {
+          autoFillBtn.disabled = false;
+          autoFillBtn.style.background = '#667eea';
+        }
+
+        // 直接开始填写
+        await this.fillMatchedFields(this.matchedFields);
+
+      } else {
+        console.error('❌ AI匹配失败:', response.error);
+        this.showMessage(`智能匹配失败: ${response.error}`, 'error');
+      }
+
+    } catch (error) {
+      console.error('🤖 AI Resume: 智能匹配时发生错误:', error);
+      this.showMessage('智能匹配失败: ' + error.message, 'error');
     }
   }
 
@@ -1519,6 +1617,88 @@ class FormFieldScanner {
     const resultMessage = `填写完成！成功 ${successCount} 个，失败 ${failedCount} 个`;
     this.showMessage(resultMessage, successCount > 0 ? 'success' : 'warning');
     console.log(`🤖 AI Resume: ${resultMessage}`);
+  }
+
+  // 🚀 新增：填写匹配后的字段（方案二）
+  async fillMatchedFields(matchedFields) {
+    if (!matchedFields || matchedFields.length === 0) {
+      this.showMessage('没有可填写的字段', 'warning');
+      return;
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    const totalCount = matchedFields.length;
+
+    console.log('🚀 AI Resume: 开始填写匹配的字段，总数:', totalCount);
+
+    for (let i = 0; i < matchedFields.length; i++) {
+      const field = matchedFields[i];
+
+      try {
+        console.log(`🚀 AI Resume: 正在填写字段 ${i + 1}/${totalCount}:`, field);
+
+        // 根据selector定位元素
+        const element = document.querySelector(field.selector);
+        if (!element) {
+          console.log(`🚀 AI Resume: 无法找到元素: ${field.selector}`);
+          failedCount++;
+          continue;
+        }
+
+        // 跳过空值字段
+        if (field.matched_value === null || field.matched_value === undefined) {
+          console.log(`🚀 AI Resume: 字段值为空，跳过`);
+          continue;
+        }
+
+        // 滚动到元素位置
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        await this.delay(200);
+
+        // 聚焦元素
+        element.focus();
+        await this.delay(100);
+
+        // 根据元素类型填写
+        const elementType = element.tagName.toLowerCase();
+        let success = false;
+
+        if (elementType === 'select') {
+          success = await this.fillSelectField(element, field.matched_value);
+        } else if (elementType === 'textarea') {
+          success = await this.fillTextareaField(element, field.matched_value);
+        } else if (elementType === 'input') {
+          success = await this.fillInputField(element, field.matched_value, element.type);
+        }
+
+        if (success) {
+          successCount++;
+          console.log(`🚀 AI Resume: 字段填写成功: ${field.matched_value}`);
+        } else {
+          failedCount++;
+          console.log(`🚀 AI Resume: 字段填写失败`);
+        }
+
+        // 更新进度显示
+        this.showMessage(
+          `正在填写... ${i + 1}/${totalCount} (成功: ${successCount}, 失败: ${failedCount})`,
+          'info'
+        );
+
+        // 延迟避免操作过快
+        await this.delay(300);
+
+      } catch (error) {
+        console.error(`🚀 AI Resume: 填写字段时发生错误:`, error);
+        failedCount++;
+      }
+    }
+
+    // 显示完成结果
+    const resultMessage = `填写完成！成功 ${successCount} 个，失败 ${failedCount} 个`;
+    this.showMessage(resultMessage, successCount > 0 ? 'success' : 'warning');
+    console.log(`🚀 AI Resume: ${resultMessage}`);
   }
 
   // 🎯 新增：根据字段类型填写值
