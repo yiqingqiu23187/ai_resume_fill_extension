@@ -280,18 +280,21 @@ class FormFieldScanner {
         }
       });
 
-      this.scannedFields = fieldsToAnalyze;
-      console.log(`🎯 AI Resume: 字段档案建立完成，共 ${fieldsToAnalyze.length} 个有效字段`);
+      // 第三步：合并同组的radio按钮
+      const mergedFields = this.mergeRadioGroups(fieldsToAnalyze);
+
+      this.scannedFields = mergedFields;
+      console.log(`🎯 AI Resume: 字段档案建立完成，共 ${mergedFields.length} 个有效字段（已合并radio组）`);
 
       // 输出详细的字段信息用于调试
-      this.logFieldProfiles(fieldsToAnalyze);
+      this.logFieldProfiles(mergedFields);
 
       // 更新显示
       this.updateFieldsDisplay();
 
       // 启用填写按钮
       const autoFillBtn = document.querySelector('#auto-fill-btn');
-      if (autoFillBtn && fieldsToAnalyze.length > 0) {
+      if (autoFillBtn && mergedFields.length > 0) {
         autoFillBtn.disabled = false;
       }
 
@@ -299,6 +302,133 @@ class FormFieldScanner {
       console.error('🤖 AI Resume: 扫描字段时发生错误:', error);
       this.showMessage('扫描表单字段失败: ' + error.message, 'error');
     }
+  }
+
+  // 🎯 新增：合并同组radio按钮
+  mergeRadioGroups(fields) {
+    const radioGroups = new Map(); // key: name, value: {firstIndex: number, radios: field[]}
+    const processedRadioNames = new Set(); // 已处理的radio name
+
+    // 第一步：收集所有radio组信息
+    fields.forEach((field, index) => {
+      if (field.type === 'radio') {
+        const name = field.attributes.name || field.clues.name;
+        if (!name) {
+          return; // 没有name的radio无法分组，保持原样
+        }
+
+        if (!radioGroups.has(name)) {
+          radioGroups.set(name, {
+            firstIndex: index,  // 记录第一个radio的位置
+            radios: []
+          });
+        }
+        radioGroups.get(name).radios.push(field);
+      }
+    });
+
+    // 第二步：遍历原始字段数组，保持顺序
+    const mergedFields = [];
+
+    fields.forEach((field, index) => {
+      if (field.type === 'radio') {
+        const name = field.attributes.name || field.clues.name;
+
+        // 没有name的radio，保持原样
+        if (!name) {
+          mergedFields.push(field);
+          return;
+        }
+
+        // 如果已经处理过这个radio组，跳过
+        if (processedRadioNames.has(name)) {
+          return;
+        }
+
+        const radioGroup = radioGroups.get(name);
+
+        // 只有一个radio，保持原样
+        if (radioGroup.radios.length === 1) {
+          mergedFields.push(field);
+          processedRadioNames.add(name);
+          return;
+        }
+
+        // 多个radio，在第一个radio的位置合并
+        if (radioGroup.firstIndex === index) {
+          const options = [];
+
+          radioGroup.radios.forEach(radio => {
+            const optionText = this.getRadioOptionText(radio.element);
+            if (optionText) {
+              options.push(optionText);
+            }
+          });
+
+          // 创建合并后的字段
+          const mergedField = {
+            ...field,
+            type: 'radio_group', // 修改类型
+            selector: `input[name="${name}"][type="radio"]`, // 使用组选择器
+            options: options, // 简化的选项数组（只保留文本）
+            radioElements: radioGroup.radios.map(r => r.element) // 保存所有radio元素引用
+          };
+
+          mergedFields.push(mergedField);
+          processedRadioNames.add(name);
+
+          console.log(`📻 合并radio组: ${mergedField.label}, 选项: [${options.join(', ')}]`);
+        }
+      } else {
+        // 非radio字段，直接保留
+        mergedFields.push(field);
+      }
+    });
+
+    return mergedFields;
+  }
+
+  // 🎯 新增：获取radio选项的显示文本
+  getRadioOptionText(radioElement) {
+    // 方法1: 检查后面的文本节点
+    let next = radioElement.nextSibling;
+    while (next) {
+      if (next.nodeType === Node.TEXT_NODE) {
+        const text = next.textContent.trim();
+        if (text && text.length > 0 && text.length <= 20) {
+          return text;
+        }
+      }
+      // 如果遇到下一个表单元素，停止查找
+      if (next.nodeType === Node.ELEMENT_NODE &&
+          ['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(next.tagName)) {
+        break;
+      }
+      next = next.nextSibling;
+    }
+
+    // 方法2: 检查关联的label
+    if (radioElement.id) {
+      const label = document.querySelector(`label[for="${radioElement.id}"]`);
+      if (label) {
+        const labelText = this.cleanLabelText(label.textContent);
+        if (labelText && labelText.length <= 20) {
+          return labelText;
+        }
+      }
+    }
+
+    // 方法3: 检查父级label
+    const parentLabel = radioElement.closest('label');
+    if (parentLabel) {
+      const labelText = this.cleanLabelText(parentLabel.textContent);
+      if (labelText && labelText.length <= 20) {
+        return labelText;
+      }
+    }
+
+    // 方法4: 使用value作为后备
+    return radioElement.value || '选项';
   }
 
   // 🎯 新增：HTML分析方法 - 发送给大模型分析
@@ -416,9 +546,15 @@ class FormFieldScanner {
           fieldData.placeholder = f.attributes.placeholder || f.clues.placeholder;
         }
 
-        // 只在有选项时才添加 options（且简化为文本数组）
+        // 处理 options
         if (f.options && f.options.length > 0) {
-          fieldData.options = f.options.map(opt => opt.text);
+          // 对于 radio_group 和 select，options 是文本数组
+          if (f.type === 'radio_group' || f.type === 'select') {
+            fieldData.options = f.options.map(opt => {
+              // 如果是对象（select的情况），提取text；如果是字符串（radio_group），直接使用
+              return typeof opt === 'string' ? opt : opt.text;
+            }).filter(text => text); // 过滤空值
+          }
         }
 
         return fieldData;
@@ -566,6 +702,7 @@ class FormFieldScanner {
          // 🥇 第一层：最可靠的语义链接
          labelFor: this.findLabelFor(element),
          frameworkLabel: this.findFrameworkLabel(element), // 🎯 新增：框架标签
+         tableCellLabel: this.findTableCellLabel(element), // 🎯 新增：表格标签
          parentLabel: this.findParentLabel(element),
 
          // 🥈 第二层：元素自身的描述性属性
@@ -588,6 +725,12 @@ class FormFieldScanner {
          bestLabel: this.determineBestLabel(element)
        };
 
+       // 🎯 新增：构建字段的层级路径
+       const hierarchyPath = this.buildFieldHierarchy(element);
+       const fullLabel = hierarchyPath.length > 0
+         ? `${hierarchyPath.join(' - ')} - ${clues.bestLabel}`
+         : clues.bestLabel;
+
       // 字段基本信息
       const fieldProfile = {
         selector: uniqueSelector,
@@ -598,7 +741,9 @@ class FormFieldScanner {
         // 兼容旧格式的属性
         name: clues.name || clues.id || `field_${index}`,
         elementType: element.tagName.toLowerCase(),
-        label: clues.bestLabel,
+        label: fullLabel,  // 🎯 使用包含层级的完整标签
+        baseLabel: clues.bestLabel,  // 🎯 保存原始标签（不含层级）
+        hierarchyPath: hierarchyPath,  // 🎯 保存层级路径
         attributes: {
           id: clues.id,
           name: clues.name,
@@ -627,11 +772,233 @@ class FormFieldScanner {
     }
   }
 
+  // 🎯 新增：构建字段的层级路径
+  buildFieldHierarchy(element) {
+    const hierarchy = [];
+    const foundTitles = new Set(); // 避免重复添加相同标题
+    let currentElement = element;
+    let maxDepth = 15; // 增加深度，确保能找到所有层级
+
+    while (currentElement && maxDepth > 0) {
+      currentElement = currentElement.parentElement;
+      if (!currentElement) break;
+
+      // 查找当前容器的标题/章节头
+      const sectionTitle = this.findSectionTitleInContainer(currentElement);
+      if (sectionTitle && !foundTitles.has(sectionTitle)) {
+        hierarchy.unshift(sectionTitle); // 添加到开头，保持从外到内的顺序
+        foundTitles.add(sectionTitle);
+      }
+
+      maxDepth--;
+    }
+
+    return hierarchy;
+  }
+
+  // 🎯 新增：在容器中查找章节标题
+  findSectionTitleInContainer(container) {
+    // 🎯 排除特定的容器（如导航菜单、侧边栏等）
+    const containerId = container.id || '';
+    const containerClass = container.className || '';
+    const excludePatterns = [
+      /nav|menu|sidebar|toc|breadcrumb|导航|菜单|侧边/i
+    ];
+
+    for (const pattern of excludePatterns) {
+      if (pattern.test(containerId) || pattern.test(containerClass)) {
+        return null; // 跳过导航菜单等容器
+      }
+    }
+
+    // 策略1: 查找常见的标题class
+    const titleSelectors = [
+      '.setTitle',           // 你的HTML中的主标题（高优先级）
+      '.subtitle_title',     // 你的HTML中的子标题
+      '.section-title',
+      '.section-header',
+      '.panel-title',
+      '.card-title',
+      '.form-title',
+      '.subtitle'
+    ];
+
+    for (const selector of titleSelectors) {
+      // 🎯 查找所有匹配的标题元素（而不是只找第一个）
+      const titleElements = container.querySelectorAll(selector);
+
+      for (const titleElement of titleElements) {
+        // 🎯 关键：确保这个标题是当前容器的"直接"标题
+        // 检查标题和容器之间是否还有其他包含标题的容器
+        let parent = titleElement.parentElement;
+        let depth = 0;
+        let hasIntermediateTitle = false;
+        let belongsToThisContainer = false;
+
+        while (parent) {
+          if (parent === container) {
+            belongsToThisContainer = true;
+            break;
+          }
+
+          // 🎯 检查中间层是否有其他标题元素
+          // 如果有，说明这个标题属于更内层的容器，不是当前容器的标题
+          if (parent !== titleElement.parentElement) {
+            const hasTitle = titleSelectors.some(sel =>
+              parent.matches(sel) || parent.querySelector(`:scope > ${sel}`)
+            );
+            if (hasTitle) {
+              hasIntermediateTitle = true;
+              break;
+            }
+          }
+
+          depth++;
+          if (depth > 8) break;
+          parent = parent.parentElement;
+        }
+
+        // 只有当标题属于当前容器，且中间没有其他标题容器时才使用
+        if (belongsToThisContainer && !hasIntermediateTitle && depth <= 6) {
+          // 🎯 提取标题文本（包括编号）
+          const titleText = this.getDirectTextContent(titleElement);
+
+          // 🎯 严格的文本验证
+          if (titleText &&
+              titleText.length >= 2 &&
+              titleText.length <= 30 &&
+              !titleText.includes('http') &&
+              !titleText.includes('javascript')) {
+            return titleText;
+          }
+        }
+      }
+    }
+
+    // 策略2: 查找标准HTML标题标签 (h1-h6)
+    for (let i = 1; i <= 6; i++) {
+      const headings = container.querySelectorAll(`h${i}`);
+
+      for (const heading of headings) {
+        let parent = heading.parentElement;
+        let depth = 0;
+        let hasIntermediateHeading = false;
+        let belongsToThisContainer = false;
+
+        while (parent) {
+          if (parent === container) {
+            belongsToThisContainer = true;
+            break;
+          }
+
+          // 检查中间是否有其他标题
+          if (parent !== heading.parentElement) {
+            for (let j = 1; j <= 6; j++) {
+              if (parent.querySelector(`h${j}`)) {
+                hasIntermediateHeading = true;
+                break;
+              }
+            }
+            if (hasIntermediateHeading) break;
+          }
+
+          depth++;
+          if (depth > 8) break;
+          parent = parent.parentElement;
+        }
+
+        if (belongsToThisContainer && !hasIntermediateHeading && depth <= 6) {
+          const headingText = this.getDirectTextContent(heading);
+          if (headingText &&
+              headingText.length >= 2 &&
+              headingText.length <= 30 &&
+              !headingText.includes('http') &&
+              !headingText.includes('javascript')) {
+            return headingText;
+          }
+        }
+      }
+    }
+
+    // 策略3: 检查容器本身是否有特定的ID或class暗示其用途
+    const containerHint = this.getContainerHint(container);
+    if (containerHint) {
+      return containerHint;
+    }
+
+    return null;
+  }
+
+  // 🎯 新增：获取元素的直接文本内容（包括特定子元素的文本，如编号）
+  getDirectTextContent(element) {
+    let text = '';
+
+    // 获取所有子节点（包括文本节点和元素节点）
+    for (const node of element.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        // 文本节点，直接添加
+        text += node.textContent;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        // 元素节点，检查是否是编号类的元素
+        const tagName = node.tagName.toLowerCase();
+        const className = node.className || '';
+        const id = node.id || '';
+
+        // 🎯 跳过链接、按钮等交互元素
+        if (['a', 'button', 'input', 'select', 'textarea'].includes(tagName)) {
+          continue;
+        }
+
+        // 识别编号元素：通常包含数字和括号，或者class/id暗示是索引
+        const isIndexElement =
+          /index|number|num|序号/i.test(className + id) ||
+          /^\s*\(\d+\)\s*$/.test(node.textContent) ||  // 匹配 (1), (2) 等格式
+          (node.textContent.trim().length <= 5 && /\d/.test(node.textContent)); // 短文本且包含数字
+
+        if (isIndexElement) {
+          text += node.textContent;
+        }
+        // 跳过其他元素（如span包含的复杂内容等）
+      }
+    }
+
+    return this.cleanLabelText(text);
+  }
+
+  // 🎯 新增：从容器的ID/class推断其用途
+  getContainerHint(container) {
+    const id = container.id || '';
+    const className = container.className || '';
+    const combined = (id + ' ' + className).toLowerCase();
+
+    const patterns = [
+      [/personal.*info|基本.*信息|个人.*资料/i, '个人信息'],
+      [/education|学历|教育.*经历/i, '教育经历'],
+      [/work.*exp|工作.*经验|工作.*经历|职业.*经历/i, '工作经历'],
+      [/family|家庭.*关系|家庭.*成员/i, '家庭关系'],
+      [/project|项目.*经验|项目.*经历/i, '项目经验'],
+      [/skill|技能/i, '技能特长'],
+      [/certificate|证书|资格/i, '证书资质'],
+      [/language|语言.*能力/i, '语言能力'],
+      [/award|获奖|荣誉/i, '获奖荣誉'],
+      [/hobby|兴趣.*爱好/i, '兴趣爱好']
+    ];
+
+    for (const [pattern, label] of patterns) {
+      if (pattern.test(combined)) {
+        return label;
+      }
+    }
+
+    return null;
+  }
+
   // 🏷️ 确定最佳标签
   determineBestLabel(element) {
     const candidates = [
       this.findLabelFor(element),
       this.findFrameworkLabel(element),  // 🎯 新增：框架模式识别 (高优先级)
+      this.findTableCellLabel(element),  // 🎯 表格结构标签识别 (高优先级)
       this.findParentLabel(element),
       element.ariaLabel || element.getAttribute('aria-label'),
       this.cleanLabelText(element.placeholder),
@@ -695,6 +1062,79 @@ class FormFieldScanner {
           const labelText = this.cleanLabelText(label.textContent);
           if (labelText && labelText.length <= 20) {
             return labelText;
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // 🎯 新增：表格单元格标签识别
+  findTableCellLabel(element) {
+    // 检查是否在表格单元格中
+    const cell = element.closest('td');
+    if (!cell) return null;
+
+    const currentRow = cell.parentElement;
+
+    // 方法1: 查找前一个单元格（同一行）
+    const prevCell = cell.previousElementSibling;
+    if (prevCell && prevCell.tagName === 'TD') {
+      const labelText = this.cleanLabelText(prevCell.textContent);
+      // 确保这是一个合理的标签（不是输入框的值等）
+      if (labelText && labelText.length >= 2 && labelText.length <= 30) {
+        // 排除包含输入框等表单元素的单元格
+        if (!prevCell.querySelector('input, select, textarea, button')) {
+          return labelText;
+        }
+      }
+    }
+
+    // 方法2: 查找前一行（处理跨列标签的情况）
+    const prevRow = currentRow.previousElementSibling;
+    if (prevRow && prevRow.tagName === 'TR') {
+      const prevRowCells = prevRow.querySelectorAll('td');
+
+      // 检查前一行是否有跨列的单元格（colspan）
+      for (const prevRowCell of prevRowCells) {
+        const colspan = parseInt(prevRowCell.getAttribute('colspan') || '1');
+        if (colspan > 1) {
+          // 这很可能是一个标签行
+          const labelText = this.cleanLabelText(prevRowCell.textContent);
+          if (labelText && labelText.length >= 2) {
+            // 排除包含表单元素的单元格
+            if (!prevRowCell.querySelector('input, select, textarea, button')) {
+              return labelText;
+            }
+          }
+        }
+      }
+
+      // 如果前一行只有一个单元格，也可能是标签
+      if (prevRowCells.length === 1) {
+        const labelText = this.cleanLabelText(prevRowCells[0].textContent);
+        if (labelText && labelText.length >= 2) {
+          if (!prevRowCells[0].querySelector('input, select, textarea, button')) {
+            return labelText;
+          }
+        }
+      }
+    }
+
+    // 方法3: 查找同一列的表头
+    const table = element.closest('table');
+    if (table) {
+      const cellIndex = Array.from(currentRow.children).indexOf(cell);
+
+      // 查找thead中的对应列
+      const thead = table.querySelector('thead');
+      if (thead) {
+        const headerCells = thead.querySelectorAll('th');
+        if (headerCells[cellIndex]) {
+          const headerText = this.cleanLabelText(headerCells[cellIndex].textContent);
+          if (headerText && headerText.length >= 2 && headerText.length <= 30) {
+            return headerText;
           }
         }
       }
@@ -861,6 +1301,7 @@ class FormFieldScanner {
       .replace(/^\s*[*]\s*/, '') // 移除开头的星号
       .replace(/\s+/g, ' ')      // 合并多个空格
       .replace(/必填|选填|可选/g, '') // 移除必填提示
+      .replace(/保\s*存|删\s*除|取\s*消|确\s*定|提\s*交|重\s*置/g, '') // 移除常见按钮文字
       .trim();
   }
 
@@ -1074,9 +1515,15 @@ class FormFieldScanner {
         selector: profile.selector
       });
 
+      // 🎯 显示层级路径
+      if (profile.hierarchyPath && profile.hierarchyPath.length > 0) {
+        console.log('📂 层级路径:', profile.hierarchyPath.join(' > '));
+      }
+
        console.log('🔍 搜集到的线索:', {
          '🥇 labelFor': profile.clues.labelFor,
          '🥇 frameworkLabel': profile.clues.frameworkLabel,
+         '🥇 tableCellLabel': profile.clues.tableCellLabel,
          '🥇 parentLabel': profile.clues.parentLabel,
          '🥈 placeholder': profile.clues.placeholder,
          '🥈 ariaLabel': profile.clues.ariaLabel,
@@ -1096,7 +1543,8 @@ class FormFieldScanner {
      // 统计信息
      const labelSources = profiles.map(p => {
        if (p.clues.labelFor) return 'labelFor';
-       if (p.clues.frameworkLabel) return 'frameworkLabel';  // 🎯 新增统计
+       if (p.clues.frameworkLabel) return 'frameworkLabel';  // 🎯 框架标签
+       if (p.clues.tableCellLabel) return 'tableCellLabel';  // 🎯 表格标签
        if (p.clues.parentLabel) return 'parentLabel';
        if (p.clues.ariaLabel) return 'ariaLabel';
        if (p.clues.placeholder) return 'placeholder';
@@ -1138,10 +1586,17 @@ class FormFieldScanner {
           padding: 8px 0;
           border-bottom: 1px solid #eee;
         `;
+
+        // 对于 radio_group，显示选项信息
+        let typeDisplay = field.type;
+        if (field.type === 'radio_group' && field.options) {
+          typeDisplay = `radio: ${field.options.join('/')}`;
+        }
+
         fieldItem.innerHTML = `
           <div>
             <span style="font-weight: 500;">${field.label}</span>
-            <span style="color: #666; font-size: 12px;">[${field.type}]</span>
+            <span style="color: #666; font-size: 12px;">[${typeDisplay}]</span>
           </div>
           <span id="field-status-${index}" style="font-size: 12px; color: #666;">等待填写</span>
         `;
@@ -1633,48 +2088,62 @@ class FormFieldScanner {
     console.log('🚀 AI Resume: 开始填写匹配的字段，总数:', totalCount);
 
     for (let i = 0; i < matchedFields.length; i++) {
-      const field = matchedFields[i];
+      const matchedField = matchedFields[i];
 
       try {
-        console.log(`🚀 AI Resume: 正在填写字段 ${i + 1}/${totalCount}:`, field);
-
-        // 根据selector定位元素
-        const element = document.querySelector(field.selector);
-        if (!element) {
-          console.log(`🚀 AI Resume: 无法找到元素: ${field.selector}`);
-          failedCount++;
-          continue;
-        }
+        console.log(`🚀 AI Resume: 正在填写字段 ${i + 1}/${totalCount}:`, matchedField);
 
         // 跳过空值字段
-        if (field.matched_value === null || field.matched_value === undefined) {
+        if (matchedField.matched_value === null || matchedField.matched_value === undefined) {
           console.log(`🚀 AI Resume: 字段值为空，跳过`);
           continue;
         }
 
-        // 滚动到元素位置
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await this.delay(200);
+        // 从 scannedFields 中找到原始字段信息
+        const originalField = this.scannedFields.find(f => f.selector === matchedField.selector);
+        if (!originalField) {
+          console.log(`🚀 AI Resume: 无法找到原始字段: ${matchedField.selector}`);
+          failedCount++;
+          continue;
+        }
 
-        // 聚焦元素
-        element.focus();
-        await this.delay(100);
-
-        // 根据元素类型填写
-        const elementType = element.tagName.toLowerCase();
         let success = false;
 
-        if (elementType === 'select') {
-          success = await this.fillSelectField(element, field.matched_value);
-        } else if (elementType === 'textarea') {
-          success = await this.fillTextareaField(element, field.matched_value);
-        } else if (elementType === 'input') {
-          success = await this.fillInputField(element, field.matched_value, element.type);
+        // 处理 radio_group 类型
+        if (originalField.type === 'radio_group') {
+          success = await this.fillRadioGroup(originalField, matchedField.matched_value);
+        } else {
+          // 处理其他类型
+          const element = document.querySelector(matchedField.selector);
+          if (!element) {
+            console.log(`🚀 AI Resume: 无法找到元素: ${matchedField.selector}`);
+            failedCount++;
+            continue;
+          }
+
+          // 滚动到元素位置
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await this.delay(200);
+
+          // 聚焦元素
+          element.focus();
+          await this.delay(100);
+
+          // 根据元素类型填写
+          const elementType = element.tagName.toLowerCase();
+
+          if (elementType === 'select') {
+            success = await this.fillSelectField(element, matchedField.matched_value);
+          } else if (elementType === 'textarea') {
+            success = await this.fillTextareaField(element, matchedField.matched_value);
+          } else if (elementType === 'input') {
+            success = await this.fillInputField(element, matchedField.matched_value, element.type);
+          }
         }
 
         if (success) {
           successCount++;
-          console.log(`🚀 AI Resume: 字段填写成功: ${field.matched_value}`);
+          console.log(`🚀 AI Resume: 字段填写成功: ${matchedField.matched_value}`);
         } else {
           failedCount++;
           console.log(`🚀 AI Resume: 字段填写失败`);
@@ -1699,6 +2168,55 @@ class FormFieldScanner {
     const resultMessage = `填写完成！成功 ${successCount} 个，失败 ${failedCount} 个`;
     this.showMessage(resultMessage, successCount > 0 ? 'success' : 'warning');
     console.log(`🚀 AI Resume: ${resultMessage}`);
+  }
+
+  // 🎯 新增：填写radio组
+  async fillRadioGroup(fieldProfile, matchedValue) {
+    try {
+      console.log(`📻 填写radio组: ${fieldProfile.label}, 目标值: ${matchedValue}`);
+
+      // 获取所有radio元素
+      const radioElements = fieldProfile.radioElements;
+      if (!radioElements || radioElements.length === 0) {
+        console.log('❌ 没有找到radio元素');
+        return false;
+      }
+
+      // 遍历所有radio，找到匹配的
+      for (let i = 0; i < radioElements.length; i++) {
+        const radio = radioElements[i];
+        const optionText = this.getRadioOptionText(radio);
+
+        console.log(`  检查选项 ${i + 1}: "${optionText}" vs "${matchedValue}"`);
+
+        // 精确匹配或模糊匹配
+        if (optionText === matchedValue ||
+            optionText.includes(matchedValue) ||
+            matchedValue.includes(optionText)) {
+
+          // 滚动到元素
+          radio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await this.delay(200);
+
+          // 选中radio
+          radio.checked = true;
+
+          // 触发事件
+          radio.dispatchEvent(new Event('change', { bubbles: true }));
+          radio.dispatchEvent(new Event('click', { bubbles: true }));
+
+          console.log(`✅ 成功选中: ${optionText}`);
+          return true;
+        }
+      }
+
+      console.log(`❌ 未找到匹配的选项: ${matchedValue}`);
+      return false;
+
+    } catch (error) {
+      console.error('📻 填写radio组失败:', error);
+      return false;
+    }
   }
 
   // 🎯 新增：根据字段类型填写值
