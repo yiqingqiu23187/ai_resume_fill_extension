@@ -45,7 +45,7 @@ class ResumeTemplateManager {
           "专业": "请输入专业名称",
           "就读时间": "如：2022-09-01到2026-06-15",
           "学历类型": "如：全日制/在职/自考/网络教育",
-          "学校类型": "如：985/211/普通本科/专科",
+          "学校等级": "如：985/211/普通本科/专科",
           "GPA成绩": "如：3.8/4.0",
           "专业排名": "如：5/120 前5%",
           "主修课程": "主要学习的课程，50字以内##long##",
@@ -69,7 +69,7 @@ class ResumeTemplateManager {
         type: "array",
         itemName: "工作/实习经历",
         fields: {
-          "工作类型": "如：工作/实习/兼职",
+          "工作类型": "如：全职/实习/兼职",
           "公司名称": "请输入公司名称",
           "职位名称": "请输入职位名称",
           "在职时间": "如：2024-06-02到2024-11-11",
@@ -316,11 +316,15 @@ class ResumeTemplateManager {
 
   // 填充表单数据
   populateFormData(resumeData) {
+    // 1. 先处理模板中定义的字段
     Object.keys(resumeData).forEach(sectionKey => {
       const sectionData = resumeData[sectionKey];
       const section = this.template[sectionKey];
 
-      if (!section) return;
+      if (!section) {
+        // 如果模板中没有这个分类，说明是自定义字段，稍后处理
+        return;
+      }
 
       if (section.type === 'array' && Array.isArray(sectionData)) {
         // 数组数据填充
@@ -338,6 +342,48 @@ class ResumeTemplateManager {
         });
       }
     });
+
+    // 2. 处理自定义字段（不在模板中的字段）
+    Object.keys(resumeData).forEach(sectionKey => {
+      const sectionData = resumeData[sectionKey];
+      const section = this.template[sectionKey];
+
+      // 如果这个分类不在模板中，或者分类中有额外的字段
+      if (!section && typeof sectionData === 'object' && !Array.isArray(sectionData)) {
+        // 这是完全自定义的分类，把所有字段作为自定义字段添加
+        Object.entries(sectionData).forEach(([fieldName, fieldValue]) => {
+          const customFieldKey = `${sectionKey}.${fieldName}`;
+          if (!this.customFields.has(customFieldKey)) {
+            // 添加到自定义字段集合
+            this.customFields.set(customFieldKey, {
+              label: `${sectionKey} - ${fieldName}`,
+              placeholder: `请输入${fieldName}`,
+              category: sectionKey
+            });
+          }
+        });
+      } else if (section && section.type === 'object' && typeof sectionData === 'object') {
+        // 检查是否有不在模板定义中的字段
+        Object.keys(sectionData).forEach(fieldName => {
+          if (!section.fields[fieldName]) {
+            const customFieldKey = `${sectionKey}.${fieldName}`;
+            if (!this.customFields.has(customFieldKey)) {
+              this.customFields.set(customFieldKey, {
+                label: `${sectionKey} - ${fieldName}`,
+                placeholder: `请输入${fieldName}`,
+                category: sectionKey
+              });
+            }
+          }
+        });
+      }
+    });
+
+    // 3. 如果发现了自定义字段，重新渲染自定义字段区域
+    if (this.customFields.size > 0) {
+      // 触发重新渲染（需要在 popup.js 中调用模板初始化）
+      console.log(`发现 ${this.customFields.size} 个自定义字段`);
+    }
   }
 
   // 添加数组项
@@ -364,7 +410,7 @@ class ResumeTemplateManager {
     }
 
     // 绑定删除事件
-    const removeBtn = container.querySelector(`[data-index="${itemIndex}"]`);
+    const removeBtn = container.querySelector(`.remove-item-btn[data-section="${sectionKey}"][data-index="${itemIndex}"]`);
     if (removeBtn) {
       removeBtn.addEventListener('click', () => {
         this.removeArrayItem(sectionKey, itemIndex);
