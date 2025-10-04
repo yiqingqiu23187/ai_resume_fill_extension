@@ -227,15 +227,17 @@ async function handleMessage(request, sender, sendResponse) {
         break;
 
       case 'getResume':
-        let resumeData = await StorageManager.getResumeData();
-        if (!resumeData) {
-          const resumeResult = await APIManager.getResume();
-          if (resumeResult.success) {
-            resumeData = resumeResult.data;
-            await StorageManager.setResumeData(resumeData);
-          }
+        // 优先从后端获取最新数据
+        const resumeResult = await APIManager.getResume();
+        if (resumeResult.success) {
+          const resumeData = resumeResult.data;
+          await StorageManager.setResumeData(resumeData);
+          sendResponse({ success: true, data: resumeData });
+        } else {
+          // 后端获取失败，尝试从本地缓存读取
+          const cachedResumeData = await StorageManager.getResumeData();
+          sendResponse({ success: !!cachedResumeData, data: cachedResumeData });
         }
-        sendResponse({ success: true, data: resumeData });
         break;
 
       case 'updateResume':
