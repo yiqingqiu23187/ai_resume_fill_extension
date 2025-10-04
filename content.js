@@ -2181,7 +2181,59 @@ class FormFieldScanner {
 
     console.log('🚀 AI Resume: 开始填写匹配的字段，总数:', totalCount);
 
-    for (let i = 0; i < matchedFields.length; i++) {
+    // 🎯 关键修复：拦截表单提交和页面跳转
+    const preventSubmit = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log('🚫 已拦截表单提交事件');
+      return false;
+    };
+
+    const preventNavigation = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      console.log('🚫 已拦截页面跳转事件');
+      return false;
+    };
+
+    const preventClick = (e) => {
+      // 只拦截可能导致跳转的点击（链接、按钮等）
+      const target = e.target;
+      if (target.tagName === 'A' ||
+          target.tagName === 'BUTTON' && target.type === 'submit' ||
+          target.onclick ||
+          target.getAttribute('onclick')) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        console.log('🚫 已拦截可能导致跳转的点击事件:', target);
+        return false;
+      }
+    };
+
+    // 添加全局事件监听
+    document.addEventListener('submit', preventSubmit, true);
+    window.addEventListener('beforeunload', preventNavigation, true);
+    document.addEventListener('click', preventClick, true);
+
+    // 查找所有表单并阻止提交
+    const forms = document.querySelectorAll('form');
+    forms.forEach(form => {
+      form.addEventListener('submit', preventSubmit, true);
+    });
+
+    // 临时禁用所有提交按钮
+    const submitButtons = document.querySelectorAll('button[type="submit"], input[type="submit"]');
+    const originalDisabledStates = new Map();
+    submitButtons.forEach(btn => {
+      originalDisabledStates.set(btn, btn.disabled);
+      btn.disabled = true;
+    });
+
+    try {
+      for (let i = 0; i < matchedFields.length; i++) {
       const matchedField = matchedFields[i];
 
       try {
@@ -2272,6 +2324,24 @@ class FormFieldScanner {
     const resultMessage = `填写完成！成功 ${successCount} 个，失败 ${failedCount} 个`;
     this.showMessage(resultMessage, successCount > 0 ? 'success' : 'warning');
     console.log(`🚀 AI Resume: ${resultMessage}`);
+
+    } finally {
+      // 🎯 关键修复：移除事件监听器，恢复正常功能
+      document.removeEventListener('submit', preventSubmit, true);
+      window.removeEventListener('beforeunload', preventNavigation, true);
+      document.removeEventListener('click', preventClick, true);
+
+      forms.forEach(form => {
+        form.removeEventListener('submit', preventSubmit, true);
+      });
+
+      // 恢复提交按钮的原始状态
+      submitButtons.forEach(btn => {
+        btn.disabled = originalDisabledStates.get(btn) || false;
+      });
+
+      console.log('✅ 已移除表单提交拦截');
+    }
   }
 
   // 🎯 新增：填写radio组
