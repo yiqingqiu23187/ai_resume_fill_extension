@@ -824,15 +824,23 @@ class FormFieldScanner {
     ];
 
     for (const selector of titleSelectors) {
-      // 🎯 查找所有匹配的标题元素（而不是只找第一个）
-      const titleElements = container.querySelectorAll(selector);
+      // 🎯 查找所有匹配的标题元素，优先查找直接子元素
+      // 先查找直接子元素
+      const directChildren = Array.from(container.children).filter(child =>
+        child.matches(selector) || child.querySelector(selector)
+      );
+
+      // 如果有直接匹配的子元素，优先使用；否则使用全局查找
+      const titleElements = directChildren.length > 0
+        ? directChildren.map(child => child.matches(selector) ? child : child.querySelector(selector)).filter(Boolean)
+        : container.querySelectorAll(selector);
 
       for (const titleElement of titleElements) {
         // 🎯 关键：确保这个标题是当前容器的"直接"标题
         // 检查标题和容器之间是否还有其他包含标题的容器
         let parent = titleElement.parentElement;
         let depth = 0;
-        let hasIntermediateTitle = false;
+        let hasIntermediateContainer = false;
         let belongsToThisContainer = false;
 
         while (parent) {
@@ -841,15 +849,24 @@ class FormFieldScanner {
             break;
           }
 
-          // 🎯 检查中间层是否有其他标题元素
-          // 如果有，说明这个标题属于更内层的容器，不是当前容器的标题
-          if (parent !== titleElement.parentElement) {
-            const hasTitle = titleSelectors.some(sel =>
-              parent.matches(sel) || parent.querySelector(`:scope > ${sel}`)
-            );
-            if (hasTitle) {
-              hasIntermediateTitle = true;
-              break;
+          // 🎯 检查中间层是否有其他可能的容器（包含表单字段或者有特定class的div）
+          // 如果有，说明这个标题属于更内层的容器，不是当前容器的直接标题
+          if (parent !== titleElement.parentElement && parent !== container) {
+            // 检查是否是一个独立的子模块容器
+            const hasFormFields = parent.querySelector('input, select, textarea');
+            const hasSubModuleClass = /subtitle|section|module|panel|card|block/i.test(parent.className || '');
+
+            if (hasFormFields || hasSubModuleClass) {
+              // 进一步检查这个中间容器是否有自己的标题
+              const hasOwnTitle = titleSelectors.some(sel => {
+                const ownTitle = parent.querySelector(`:scope > ${sel}, :scope > * > ${sel}`);
+                return ownTitle && ownTitle !== titleElement;
+              });
+
+              if (hasOwnTitle) {
+                hasIntermediateContainer = true;
+                break;
+              }
             }
           }
 
@@ -858,8 +875,9 @@ class FormFieldScanner {
           parent = parent.parentElement;
         }
 
-        // 只有当标题属于当前容器，且中间没有其他标题容器时才使用
-        if (belongsToThisContainer && !hasIntermediateTitle && depth <= 6) {
+        // 只有当标题属于当前容器，且中间没有其他容器时才使用
+        // 同时深度要合理（不能太深，说明层级关系不够直接）
+        if (belongsToThisContainer && !hasIntermediateContainer && depth <= 4) {
           // 🎯 提取标题文本（包括编号）
           const titleText = this.getDirectTextContent(titleElement);
 
@@ -877,12 +895,19 @@ class FormFieldScanner {
 
     // 策略2: 查找标准HTML标题标签 (h1-h6)
     for (let i = 1; i <= 6; i++) {
-      const headings = container.querySelectorAll(`h${i}`);
+      // 优先查找直接子元素
+      const directHeadings = Array.from(container.children).filter(child =>
+        child.tagName === `H${i}` || child.querySelector(`h${i}`)
+      );
+
+      const headings = directHeadings.length > 0
+        ? directHeadings.map(child => child.tagName === `H${i}` ? child : child.querySelector(`h${i}`)).filter(Boolean)
+        : container.querySelectorAll(`h${i}`);
 
       for (const heading of headings) {
         let parent = heading.parentElement;
         let depth = 0;
-        let hasIntermediateHeading = false;
+        let hasIntermediateContainer = false;
         let belongsToThisContainer = false;
 
         while (parent) {
@@ -891,15 +916,27 @@ class FormFieldScanner {
             break;
           }
 
-          // 检查中间是否有其他标题
-          if (parent !== heading.parentElement) {
-            for (let j = 1; j <= 6; j++) {
-              if (parent.querySelector(`h${j}`)) {
-                hasIntermediateHeading = true;
+          // 检查中间是否有其他可能的容器
+          if (parent !== heading.parentElement && parent !== container) {
+            const hasFormFields = parent.querySelector('input, select, textarea');
+            const hasSubModuleClass = /subtitle|section|module|panel|card|block/i.test(parent.className || '');
+
+            if (hasFormFields || hasSubModuleClass) {
+              // 检查是否有自己的标题
+              let hasOwnHeading = false;
+              for (let j = 1; j <= 6; j++) {
+                const ownHeading = parent.querySelector(`:scope > h${j}, :scope > * > h${j}`);
+                if (ownHeading && ownHeading !== heading) {
+                  hasOwnHeading = true;
+                  break;
+                }
+              }
+
+              if (hasOwnHeading) {
+                hasIntermediateContainer = true;
                 break;
               }
             }
-            if (hasIntermediateHeading) break;
           }
 
           depth++;
@@ -907,7 +944,7 @@ class FormFieldScanner {
           parent = parent.parentElement;
         }
 
-        if (belongsToThisContainer && !hasIntermediateHeading && depth <= 6) {
+        if (belongsToThisContainer && !hasIntermediateContainer && depth <= 4) {
           const headingText = this.getDirectTextContent(heading);
           if (headingText &&
               headingText.length >= 2 &&
@@ -2074,6 +2111,65 @@ class FormFieldScanner {
     console.log(`🤖 AI Resume: ${resultMessage}`);
   }
 
+  // 🎯 辅助函数：安全地查询元素（处理转义字符问题）
+  safeQuerySelector(selector) {
+    try {
+      // 直接尝试使用selector
+      let element = document.querySelector(selector);
+      if (element) {
+        console.log(`✅ 直接找到元素: ${selector}`);
+        return element;
+      }
+
+      // 如果selector包含转义的数字（如 \31 代表 '1'）
+      // 需要处理从JSON传输过来可能的双重转义问题
+
+      // 尝试通过ID直接查找
+      if (selector.startsWith('#')) {
+        // 方法1: 去掉#号后直接用getElementById
+        let idPart = selector.substring(1);
+
+        // 如果包含反斜杠转义，解析真实的ID
+        // #\31_21_1 -> 实际ID是 1_21_1
+        if (idPart.includes('\\')) {
+          // 解析CSS转义序列
+          idPart = idPart.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (match, hex) => {
+            return String.fromCharCode(parseInt(hex, 16));
+          });
+          console.log(`🔄 解析转义后的ID: ${idPart}`);
+        }
+
+        element = document.getElementById(idPart);
+        if (element) {
+          console.log(`✅ 通过getElementById找到: ${idPart}`);
+          return element;
+        }
+
+        // 方法2: 使用CSS.escape重新转义
+        try {
+          element = document.querySelector(`#${CSS.escape(idPart)}`);
+          if (element) {
+            console.log(`✅ 通过CSS.escape找到: ${idPart}`);
+            return element;
+          }
+        } catch (e) {
+          console.warn(`CSS.escape失败:`, e);
+        }
+      }
+
+      // 尝试属性选择器（用于radio等）
+      if (selector.includes('[name=') || selector.includes('[type=')) {
+        return document.querySelector(selector);
+      }
+
+      console.warn(`❌ 无法找到元素: ${selector}`);
+      return null;
+    } catch (error) {
+      console.error('🚀 AI Resume: querySelector失败:', selector, error);
+      return null;
+    }
+  }
+
   // 🚀 新增：填写匹配后的字段（方案二）
   async fillMatchedFields(matchedFields) {
     if (!matchedFields || matchedFields.length === 0) {
@@ -2113,13 +2209,16 @@ class FormFieldScanner {
         if (originalField.type === 'radio_group') {
           success = await this.fillRadioGroup(originalField, matchedField.matched_value);
         } else {
-          // 处理其他类型
-          const element = document.querySelector(matchedField.selector);
+          // 处理其他类型 - 使用安全的querySelector
+          const element = this.safeQuerySelector(matchedField.selector);
           if (!element) {
             console.log(`🚀 AI Resume: 无法找到元素: ${matchedField.selector}`);
+            console.log(`🔍 尝试的selector: ${matchedField.selector}`);
             failedCount++;
             continue;
           }
+
+          console.log(`✅ 成功找到元素: ${matchedField.selector}`, element);
 
           // 滚动到元素位置
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
