@@ -715,6 +715,15 @@ class PopupApp {
       });
     });
 
+    // 添加数组项按钮事件
+    document.querySelectorAll('.add-item-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sectionKey = btn.getAttribute('data-section');
+        window.resumeTemplateManager.addArrayItem(sectionKey);
+      });
+    });
+
     // 字段删除事件（仅自定义字段）
     document.querySelectorAll('.field-delete-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {

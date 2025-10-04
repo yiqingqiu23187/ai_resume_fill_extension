@@ -15,7 +15,7 @@ class ResumeTemplateManager {
       "基本信息": {
         type: "object",
         fields: {
-          "姓名": "请输入您的姓名",
+          "姓名": "如张三",
           "手机号码": "请输入11位手机号码",
           "邮箱地址": "请输入常用邮箱地址",
           "性别": "如：男/女",
@@ -414,6 +414,45 @@ class ResumeTemplateManager {
         removeBtn.setAttribute('data-index', newIndex);
       }
     });
+  }
+
+  // 生成自定义字段HTML（如果有自定义字段）
+  generateCustomFieldsHTML() {
+    if (this.customFields.size === 0) {
+      return '';
+    }
+
+    let html = `
+      <div class="form-section" data-category="自定义字段">
+        <div class="section-header-with-toggle">
+          <h4>自定义字段</h4>
+          <button type="button" class="section-toggle" data-target="自定义字段">收起</button>
+        </div>
+        <div class="section-content" id="section-自定义字段">
+    `;
+
+    // 生成自定义字段的HTML
+    const customFieldsArray = Array.from(this.customFields.entries());
+    for (let i = 0; i < customFieldsArray.length; i += 2) {
+      html += '<div class="form-row">';
+
+      const [fieldName1, fieldConfig1] = customFieldsArray[i];
+      html += this.generateFieldHTML(fieldConfig1, fieldName1, '自定义字段', null);
+
+      if (i + 1 < customFieldsArray.length) {
+        const [fieldName2, fieldConfig2] = customFieldsArray[i + 1];
+        html += this.generateFieldHTML(fieldConfig2, fieldName2, '自定义字段', null);
+      }
+
+      html += '</div>';
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+
+    return html;
   }
 
   // 获取统计信息

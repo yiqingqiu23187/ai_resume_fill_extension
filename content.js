@@ -537,7 +537,7 @@ class FormFieldScanner {
       // 4. 准备字段数据（只保留必要字段）
       const fieldsToMatch = this.scannedFields.map(f => {
         const fieldData = {
-          selector: f.selector,
+          selector: f.selector,  // 原始selector，不含转义
           label: f.label
         };
 
@@ -734,8 +734,10 @@ class FormFieldScanner {
       // 字段基本信息
       const fieldProfile = {
         selector: uniqueSelector,
+        rawId: element.id || null,  // 🎯 保存原始ID，用于匹配
+        rawName: element.name || null,  // 🎯 保存原始name，用于匹配
         tag: element.tagName.toLowerCase(),
-        type: element.type || 'text',
+        type: element.tagName.toLowerCase() === 'select' ? 'select' : (element.type || 'text'),
         clues: clues,
 
         // 兼容旧格式的属性
@@ -1473,20 +1475,22 @@ class FormFieldScanner {
     return true;
   }
 
-  // 🔗 生成唯一CSS选择器
+  // 🔗 生成唯一CSS选择器（不转义，保存原始值）
   generateUniqueCssSelector(element) {
     try {
-      // 方法1: 如果有唯一的ID
+      // 方法1: 如果有唯一的ID，直接使用原始ID
       if (element.id) {
-        const testSelector = `#${CSS.escape(element.id)}`;
-        if (document.querySelectorAll(testSelector).length === 1) {
-          return testSelector;
+        const testSelector = `#${element.id}`;
+        // 测试时需要转义，但返回原始值
+        const escapedSelector = `#${CSS.escape(element.id)}`;
+        if (document.querySelectorAll(escapedSelector).length === 1) {
+          return testSelector;  // 返回原始值，不转义
         }
       }
 
       // 方法2: 使用name属性
       if (element.name) {
-        const testSelector = `${element.tagName.toLowerCase()}[name="${CSS.escape(element.name)}"]`;
+        const testSelector = `[name="${element.name}"]`;
         if (document.querySelectorAll(testSelector).length === 1) {
           return testSelector;
         }
@@ -2112,60 +2116,54 @@ class FormFieldScanner {
   }
 
   // 🎯 辅助函数：安全地查询元素（处理转义字符问题）
-  safeQuerySelector(selector) {
+  // 智能查询选择器 - 自动处理转义
+  smartQuerySelector(selector) {
     try {
-      // 直接尝试使用selector
-      let element = document.querySelector(selector);
-      if (element) {
-        console.log(`✅ 直接找到元素: ${selector}`);
-        return element;
+      // 1. 先直接尝试（处理非ID选择器或已正确格式的选择器）
+      try {
+        let element = document.querySelector(selector);
+        if (element) {
+          console.log(`✅ 直接找到元素: ${selector}`);
+          return element;
+        }
+      } catch (e) {
+        // querySelector 失败，说明需要转义
+        console.log(`⚠️ querySelector失败，尝试转义: ${selector}`, e.message);
       }
 
-      // 如果selector包含转义的数字（如 \31 代表 '1'）
-      // 需要处理从JSON传输过来可能的双重转义问题
-
-      // 尝试通过ID直接查找
+      // 2. 处理 ID 选择器（可能需要转义）
       if (selector.startsWith('#')) {
-        // 方法1: 去掉#号后直接用getElementById
-        let idPart = selector.substring(1);
+        const idPart = selector.substring(1);
 
-        // 如果包含反斜杠转义，解析真实的ID
-        // #\31_21_1 -> 实际ID是 1_21_1
-        if (idPart.includes('\\')) {
-          // 解析CSS转义序列
-          idPart = idPart.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (match, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          });
-          console.log(`🔄 解析转义后的ID: ${idPart}`);
-        }
-
-        element = document.getElementById(idPart);
+        // 直接用 getElementById（不需要转义）
+        let element = document.getElementById(idPart);
         if (element) {
-          console.log(`✅ 通过getElementById找到: ${idPart}`);
+          console.log(`✅ 通过 getElementById 找到: ${idPart}`);
           return element;
         }
 
-        // 方法2: 使用CSS.escape重新转义
+        // 如果 ID 以数字开头或包含特殊字符，用 CSS.escape 转义后再查询
         try {
-          element = document.querySelector(`#${CSS.escape(idPart)}`);
+          const escapedSelector = `#${CSS.escape(idPart)}`;
+          element = document.querySelector(escapedSelector);
           if (element) {
-            console.log(`✅ 通过CSS.escape找到: ${idPart}`);
+            console.log(`✅ 通过 CSS.escape 找到: ${idPart} -> ${escapedSelector}`);
             return element;
           }
         } catch (e) {
-          console.warn(`CSS.escape失败:`, e);
+          console.warn(`CSS.escape 查询失败:`, e);
         }
       }
 
-      // 尝试属性选择器（用于radio等）
-      if (selector.includes('[name=') || selector.includes('[type=')) {
+      // 3. 处理 name 属性选择器
+      if (selector.startsWith('[name=')) {
         return document.querySelector(selector);
       }
 
       console.warn(`❌ 无法找到元素: ${selector}`);
       return null;
     } catch (error) {
-      console.error('🚀 AI Resume: querySelector失败:', selector, error);
+      console.error(`🔍 smartQuerySelector 错误:`, error);
       return null;
     }
   }
@@ -2197,6 +2195,7 @@ class FormFieldScanner {
 
         // 从 scannedFields 中找到原始字段信息
         const originalField = this.scannedFields.find(f => f.selector === matchedField.selector);
+
         if (!originalField) {
           console.log(`🚀 AI Resume: 无法找到原始字段: ${matchedField.selector}`);
           failedCount++;
@@ -2209,11 +2208,17 @@ class FormFieldScanner {
         if (originalField.type === 'radio_group') {
           success = await this.fillRadioGroup(originalField, matchedField.matched_value);
         } else {
-          // 处理其他类型 - 使用安全的querySelector
-          const element = this.safeQuerySelector(matchedField.selector);
+          // 处理其他类型 - 智能查找元素
+          let element = originalField.element;
+
+          // 检查元素是否还在 DOM 中
+          if (!element || !document.contains(element)) {
+            // 使用智能查询（自动处理转义）
+            element = this.smartQuerySelector(matchedField.selector);
+          }
+
           if (!element) {
             console.log(`🚀 AI Resume: 无法找到元素: ${matchedField.selector}`);
-            console.log(`🔍 尝试的selector: ${matchedField.selector}`);
             failedCount++;
             continue;
           }
