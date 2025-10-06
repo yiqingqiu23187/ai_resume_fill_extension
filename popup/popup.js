@@ -724,6 +724,15 @@ class PopupApp {
       });
     });
 
+    // 添加自定义字段按钮事件
+    document.querySelectorAll('.add-custom-field-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sectionKey = btn.getAttribute('data-section');
+        this.promptAddCustomField(sectionKey);
+      });
+    });
+
     // 字段删除事件（仅自定义字段）
     document.querySelectorAll('.field-delete-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -731,6 +740,16 @@ class PopupApp {
         this.deleteCustomField(btn);
       });
     });
+  }
+
+  // 提示添加自定义字段
+  promptAddCustomField(sectionKey) {
+    const fieldName = prompt(`请输入要在"${sectionKey}"中添加的自定义字段名称：`);
+
+    if (fieldName && fieldName.trim()) {
+      const trimmedFieldName = fieldName.trim();
+      window.resumeTemplateManager.addCustomFieldToSection(sectionKey, trimmedFieldName);
+    }
   }
 
   // 删除自定义字段

@@ -1083,3 +1083,72 @@ textarea:disabled {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* 自定义字段样式 */
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-custom-field-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #6c63ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-custom-field-btn:hover {
+  background: #5a52d5;
+  transform: translateY(-1px);
+}
+
+.custom-field {
+  position: relative;
+  border-left: 3px solid #6c63ff;
+  padding-left: 12px;
+  background: #f8f9ff;
+}
+
+.custom-field label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.remove-custom-field-btn {
+  background: #ff6b6b;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.remove-custom-field-btn:hover {
+  background: #ee5a52;
+  transform: scale(1.1);
+}
+
+.custom-field.highlight {
+  animation: highlightFade 2s ease-in-out;
+}
+
+@keyframes highlightFade {
+  0%, 100% { background: #f8f9ff; }
+  50% { background: #e8e9ff; }
+}
+
+.custom-fields-container {
+  margin-top: 16px;
+}

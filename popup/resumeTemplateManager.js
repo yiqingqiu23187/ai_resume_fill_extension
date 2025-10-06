@@ -191,7 +191,12 @@ class ResumeTemplateManager {
       <div class="form-section" data-category="${sectionKey}">
         <div class="section-header-with-toggle">
           <h4>${sectionKey}</h4>
-          <button type="button" class="section-toggle" data-target="${sectionKey}">收起</button>
+          <div class="section-header-actions">
+            <button type="button" class="add-custom-field-btn" data-section="${sectionKey}" title="在此分类添加自定义字段">
+              + 自定义字段
+            </button>
+            <button type="button" class="section-toggle" data-target="${sectionKey}">收起</button>
+          </div>
         </div>
         <div class="section-content" id="section-${sectionKey}">
     `;
@@ -214,6 +219,9 @@ class ResumeTemplateManager {
       // 对象类型：直接显示字段
       const fieldsHTML = this.generateFieldRows(section.fields, sectionKey);
       html += fieldsHTML;
+
+      // 添加自定义字段容器
+      html += `<div class="custom-fields-container" id="custom-fields-${sectionKey}"></div>`;
     }
 
     html += `
@@ -298,6 +306,8 @@ class ResumeTemplateManager {
       } else {
         // 对象类型数据收集
         const sectionData = {};
+
+        // 收集模板定义的字段
         Object.entries(section.fields).forEach(([fieldName, fieldConfig]) => {
           const fieldId = `${sectionKey}_${fieldName}`;
           const element = document.querySelector(`[name="${fieldId}"]`);
@@ -305,6 +315,20 @@ class ResumeTemplateManager {
             sectionData[fieldName] = element.value.trim();
           }
         });
+
+        // 收集自定义字段
+        const customFieldsContainer = document.getElementById(`custom-fields-${sectionKey}`);
+        if (customFieldsContainer) {
+          const customFields = customFieldsContainer.querySelectorAll('.custom-field');
+          customFields.forEach(fieldElement => {
+            const fieldName = fieldElement.getAttribute('data-field-name');
+            const input = fieldElement.querySelector('input, textarea');
+            if (input && input.value.trim()) {
+              sectionData[fieldName] = input.value.trim();
+            }
+          });
+        }
+
         if (Object.keys(sectionData).length > 0) {
           resumeData[sectionKey] = sectionData;
         }
@@ -363,27 +387,24 @@ class ResumeTemplateManager {
           }
         });
       } else if (section && section.type === 'object' && typeof sectionData === 'object') {
-        // 检查是否有不在模板定义中的字段
-        Object.keys(sectionData).forEach(fieldName => {
+        // 检查是否有不在模板定义中的字段，并动态添加
+        Object.entries(sectionData).forEach(([fieldName, fieldValue]) => {
           if (!section.fields[fieldName]) {
-            const customFieldKey = `${sectionKey}.${fieldName}`;
-            if (!this.customFields.has(customFieldKey)) {
-              this.customFields.set(customFieldKey, {
-                label: `${sectionKey} - ${fieldName}`,
-                placeholder: `请输入${fieldName}`,
-                category: sectionKey
-              });
-            }
+            // 这是自定义字段，动态添加到页面
+            this.addCustomFieldToSection(sectionKey, fieldName);
+
+            // 填充值
+            setTimeout(() => {
+              const fieldId = `${sectionKey}_${fieldName}`;
+              const element = document.querySelector(`[name="${fieldId}"]`);
+              if (element) {
+                element.value = fieldValue;
+              }
+            }, 100);
           }
         });
       }
     });
-
-    // 3. 如果发现了自定义字段，重新渲染自定义字段区域
-    if (this.customFields.size > 0) {
-      // 触发重新渲染（需要在 popup.js 中调用模板初始化）
-      console.log(`发现 ${this.customFields.size} 个自定义字段`);
-    }
   }
 
   // 添加数组项
@@ -513,6 +534,90 @@ class ResumeTemplateManager {
       sections: totalSections,
       custom: this.customFields.size
     };
+  }
+
+  // 添加自定义字段到指定分类
+  addCustomFieldToSection(sectionKey, fieldName) {
+    const section = this.template[sectionKey];
+    if (!section) {
+      console.error(`分类 ${sectionKey} 不存在`);
+      return;
+    }
+
+    if (section.type !== 'object') {
+      console.error(`只有 object 类型的分类才能添加自定义字段`);
+      return;
+    }
+
+    // 检查字段是否已存在
+    if (section.fields[fieldName]) {
+      console.error(`字段 ${fieldName} 已存在于 ${sectionKey} 中`);
+      return;
+    }
+
+    // 添加空的自定义字段到容器
+    const container = document.getElementById(`custom-fields-${sectionKey}`);
+    if (!container) {
+      console.error(`找不到自定义字段容器: custom-fields-${sectionKey}`);
+      return;
+    }
+
+    const fieldId = `${sectionKey}_${fieldName}`;
+    const fieldHTML = `
+      <div class="form-row">
+        <div class="form-group field-item custom-field" data-section="${sectionKey}" data-field-name="${fieldName}">
+          <label>
+            ${fieldName}
+            <button type="button" class="remove-custom-field-btn" data-section="${sectionKey}" data-field-name="${fieldName}" title="删除此自定义字段">
+              ✕
+            </button>
+          </label>
+          <input
+            type="text"
+            name="${fieldId}"
+            placeholder="请输入${fieldName}"
+            maxlength="300"
+            class="short-text-field"
+          >
+        </div>
+      </div>
+    `;
+
+    container.insertAdjacentHTML('beforeend', fieldHTML);
+
+    // 绑定删除事件
+    const removeBtn = container.querySelector(`.remove-custom-field-btn[data-field-name="${fieldName}"]`);
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        this.removeCustomFieldFromSection(sectionKey, fieldName);
+      });
+    }
+
+    // 滚动到新添加的字段
+    setTimeout(() => {
+      const newField = container.querySelector(`[data-field-name="${fieldName}"]`);
+      if (newField) {
+        newField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        newField.classList.add('highlight');
+        setTimeout(() => newField.classList.remove('highlight'), 2000);
+      }
+    }, 100);
+  }
+
+  // 从分类中删除自定义字段
+  removeCustomFieldFromSection(sectionKey, fieldName) {
+    if (confirm(`确定要删除自定义字段"${fieldName}"吗？`)) {
+      const container = document.getElementById(`custom-fields-${sectionKey}`);
+      if (container) {
+        const fieldElement = container.querySelector(`[data-field-name="${fieldName}"]`);
+        if (fieldElement) {
+          const row = fieldElement.closest('.form-row');
+          if (row) {
+            row.remove();
+          }
+        }
+      }
+    }
   }
 }
 
