@@ -694,8 +694,21 @@ class FormFieldScanner {
   // 🥇 为字段建立完整档案 - 多层启发式策略核心
   buildFieldProfile(element, index) {
     try {
+      // 🎨 检测UI框架并输出调试信息
+      const detectedFrameworks = this.detectFrameworkAndDebug(element);
+      
       // 生成唯一选择器，用于后续定位
       const uniqueSelector = this.generateUniqueCssSelector(element);
+
+      console.log(`🔍 开始分析字段 ${index + 1}:`, {
+        tagName: element.tagName,
+        type: element.type,
+        id: element.id,
+        name: element.name,
+        placeholder: element.placeholder,
+        className: element.className?.substring(0, 50) + '...',
+        frameworks: detectedFrameworks
+      });
 
        // 搜集所有可能的线索
        const clues = {
@@ -1034,26 +1047,52 @@ class FormFieldScanner {
 
   // 🏷️ 确定最佳标签
   determineBestLabel(element) {
-    const candidates = [
-      this.findLabelFor(element),
-      this.findFrameworkLabel(element),  // 🎯 新增：框架模式识别 (高优先级)
-      this.findTableCellLabel(element),  // 🎯 表格结构标签识别 (高优先级)
-      this.findParentLabel(element),
-      element.ariaLabel || element.getAttribute('aria-label'),
-      this.cleanLabelText(element.placeholder),
-      this.cleanLabelText(element.title),
-      this.findSiblingText(element),
-      this.inferLabelFromName(element),
-      `${element.tagName.toLowerCase()}_${Date.now() % 1000}`
+    // 定义候选标签及其优先级权重
+    const candidateStrategies = [
+      { method: () => this.findLabelFor(element), weight: 10, name: 'labelFor' },
+      { method: () => this.findFrameworkLabel(element), weight: 9, name: 'frameworkLabel' },
+      { method: () => this.findTableCellLabel(element), weight: 8, name: 'tableCellLabel' },
+      { method: () => this.findParentLabel(element), weight: 7, name: 'parentLabel' },
+      { method: () => element.ariaLabel || element.getAttribute('aria-label'), weight: 6, name: 'ariaLabel' },
+      { method: () => this.findSiblingText(element), weight: 5, name: 'siblingText' },
+      { method: () => this.inferLabelFromName(element), weight: 4, name: 'nameInference' },
+      { method: () => this.cleanLabelText(element.title), weight: 3, name: 'title' },
+      { method: () => this.cleanLabelText(element.placeholder), weight: 2, name: 'placeholder' }
     ];
 
-    for (const candidate of candidates) {
-      if (candidate && candidate.trim() && candidate.length >= 2) {
-        return candidate.trim();
+    // 收集所有有效的候选标签
+    const validCandidates = [];
+    
+    for (const strategy of candidateStrategies) {
+      try {
+        const result = strategy.method();
+        if (result && this.isValidLabelText(result)) {
+          validCandidates.push({
+            text: result.trim(),
+            weight: strategy.weight,
+            source: strategy.name
+          });
+          
+          console.log(`🏷️ 标签候选: "${result}" (来源: ${strategy.name}, 权重: ${strategy.weight})`);
+        }
+      } catch (error) {
+        console.warn(`🚨 标签提取策略 ${strategy.name} 执行失败:`, error);
       }
     }
 
-    return `未知字段_${Date.now() % 1000}`;
+    // 按权重排序，选择最佳候选
+    if (validCandidates.length > 0) {
+      validCandidates.sort((a, b) => b.weight - a.weight);
+      const bestCandidate = validCandidates[0];
+      
+      console.log(`🎯 最佳标签选择: "${bestCandidate.text}" (来源: ${bestCandidate.source})`);
+      return bestCandidate.text;
+    }
+
+    // 如果没有找到有效标签，生成默认标签
+    const fallbackLabel = `字段_${element.tagName.toLowerCase()}_${Date.now() % 1000}`;
+    console.log(`⚠️ 使用默认标签: "${fallbackLabel}"`);
+    return fallbackLabel;
   }
 
   // 🔗 查找label[for]关联
@@ -1065,48 +1104,132 @@ class FormFieldScanner {
 
   // 🎯 针对UI框架的特殊识别 (新增)
   findFrameworkLabel(element) {
-    // iView/View UI框架模式识别
-    const formItem = element.closest('.ivu-form-item');
-    if (formItem) {
-      const label = formItem.querySelector('.ivu-form-item-label');
-      if (label) {
-        return this.cleanLabelText(label.textContent);
+    // 定义框架模式配置，避免硬编码
+    const frameworkPatterns = [
+      // Phoenix UI框架模式
+      {
+        containerSelector: '[class*="form-item"]',
+        labelSelectors: [
+          '.form-item__title label',
+          '.form-item__label label', 
+          'label'
+        ],
+        priority: 1 // 高优先级，因为Phoenix结构复杂
+      },
+      // iView/View UI框架模式
+      {
+        containerSelector: '.ivu-form-item',
+        labelSelectors: ['.ivu-form-item-label'],
+        priority: 2
+      },
+      // Element UI框架模式
+      {
+        containerSelector: '.el-form-item',
+        labelSelectors: ['.el-form-item__label'],
+        priority: 2
+      },
+      // Ant Design框架模式
+      {
+        containerSelector: '.ant-form-item',
+        labelSelectors: ['.ant-form-item-label label', '.ant-form-item-label'],
+        priority: 2
+      },
+      // 通用form模式
+      {
+        containerSelector: '[class*="field"], [class*="input-group"], [class*="form-group"]',
+        labelSelectors: ['label', '[class*="label"]'],
+        priority: 3
       }
-    }
+    ];
 
-    // Element UI框架模式识别
-    const elFormItem = element.closest('.el-form-item');
-    if (elFormItem) {
-      const label = elFormItem.querySelector('.el-form-item__label');
-      if (label) {
-        return this.cleanLabelText(label.textContent);
-      }
-    }
+    // 按优先级排序
+    frameworkPatterns.sort((a, b) => a.priority - b.priority);
 
-    // Ant Design框架模式识别
-    const antFormItem = element.closest('.ant-form-item');
-    if (antFormItem) {
-      const label = antFormItem.querySelector('.ant-form-item-label label');
-      if (label) {
-        return this.cleanLabelText(label.textContent);
-      }
-    }
-
-    // 通用form-item模式
-    const genericFormItem = element.closest('[class*="form-item"], [class*="field"], [class*="input-group"]');
-    if (genericFormItem) {
-      const possibleLabels = genericFormItem.querySelectorAll('label, [class*="label"]');
-      for (const label of possibleLabels) {
-        if (label !== element && !label.contains(element)) {
-          const labelText = this.cleanLabelText(label.textContent);
-          if (labelText && labelText.length <= 20) {
-            return labelText;
+    // 遍历框架模式进行匹配
+    for (const pattern of frameworkPatterns) {
+      const container = element.closest(pattern.containerSelector);
+      if (container) {
+        // 尝试每个标签选择器
+        for (const labelSelector of pattern.labelSelectors) {
+          const labels = container.querySelectorAll(labelSelector);
+          
+          for (const label of labels) {
+            // 确保label不是input元素本身，也不包含input元素
+            if (label !== element && !label.contains(element) && !element.contains(label)) {
+              const labelText = this.cleanLabelText(label.textContent);
+              
+              // 验证标签文本的有效性
+              if (this.isValidLabelText(labelText)) {
+                console.log(`🎯 框架标签识别成功: "${labelText}" (模式: ${pattern.containerSelector})`);
+                return labelText;
+              }
+            }
           }
         }
       }
     }
 
     return null;
+  }
+
+  // 🎯 新增：验证标签文本的有效性
+  isValidLabelText(text) {
+    if (!text || typeof text !== 'string') return false;
+    
+    const trimmedText = text.trim();
+    
+    // 基本长度检查
+    if (trimmedText.length < 1 || trimmedText.length > 30) return false;
+    
+    // 排除无意义的文本
+    const invalidPatterns = [
+      /^[\s\*\-\+\=\|\[\]]*$/, // 只包含符号和空格
+      /^(请输入|输入|请选择|选择|请填写|填写)$/i, // 通用提示文本
+      /^(input|select|textarea|button|submit|reset)$/i, // HTML标签名
+      /^[0-9]+$/, // 纯数字
+      /^(undefined|null|NaN)$/i, // 程序关键字
+      /^https?:\/\//, // URL
+      /javascript:/i, // JavaScript代码
+      /^(等待填写|待填写|暂无|无|空)$/i // 占位符文本
+    ];
+    
+    return !invalidPatterns.some(pattern => pattern.test(trimmedText));
+  }
+
+  // 🎯 新增：检测Phoenix框架并提供调试信息
+  detectFrameworkAndDebug(element) {
+    const frameworks = [];
+    
+    // 检测Phoenix框架
+    if (element.closest('[class*="phoenix"]') || 
+        element.closest('[class*="form-item"]') ||
+        document.querySelector('.phoenix-input, .phoenix-select, .phoenix-form')) {
+      frameworks.push('Phoenix UI');
+    }
+    
+    // 检测其他框架
+    if (element.closest('.ant-form-item')) frameworks.push('Ant Design');
+    if (element.closest('.el-form-item')) frameworks.push('Element UI');
+    if (element.closest('.ivu-form-item')) frameworks.push('iView');
+    
+    // 输出调试信息
+    if (frameworks.length > 0) {
+      console.log(`🎨 检测到UI框架: ${frameworks.join(', ')}`);
+      
+      // 输出元素的DOM结构信息
+      const container = element.closest('[class*="form-item"], [class*="field"]');
+      if (container) {
+        console.log('📦 容器信息:', {
+          tagName: container.tagName,
+          className: container.className,
+          id: container.id,
+          labels: container.querySelectorAll('label').length,
+          inputs: container.querySelectorAll('input, select, textarea').length
+        });
+      }
+    }
+    
+    return frameworks;
   }
 
   // 🎯 新增：表格单元格标签识别
@@ -1199,22 +1322,104 @@ class FormFieldScanner {
   findSiblingText(element) {
     const candidates = [];
 
-    // 前面的兄弟元素
+    // 策略1: 直接兄弟元素文本
     let sibling = element.previousElementSibling;
-    for (let i = 0; i < 3 && sibling; i++) {
-      if (sibling.textContent && sibling.textContent.trim()) {
-        candidates.push(this.cleanLabelText(sibling.textContent));
+    for (let i = 0; i < 5 && sibling; i++) {
+      const siblingText = this.extractElementText(sibling);
+      if (siblingText) {
+        candidates.push({ text: siblingText, source: `直接兄弟-${i}`, weight: 10 - i });
       }
       sibling = sibling.previousElementSibling;
     }
 
-    // 父元素的前一个兄弟
-    const parentSibling = element.parentElement?.previousElementSibling;
-    if (parentSibling && parentSibling.textContent) {
-      candidates.push(this.cleanLabelText(parentSibling.textContent));
+    // 策略2: 父容器的兄弟元素（适用于Phoenix框架的form-item__title结构）
+    let currentParent = element.parentElement;
+    let depth = 0;
+    
+    while (currentParent && depth < 4) {
+      const parentSibling = currentParent.previousElementSibling;
+      if (parentSibling) {
+        // 特别处理Phoenix框架的title结构
+        const titleElement = parentSibling.querySelector('.form-item__title, [class*="title"], [class*="label"]');
+        if (titleElement) {
+          const titleText = this.extractElementText(titleElement);
+          if (titleText) {
+            candidates.push({ text: titleText, source: `父级兄弟标题-${depth}`, weight: 8 - depth });
+          }
+        }
+        
+        // 通用兄弟文本
+        const siblingText = this.extractElementText(parentSibling);
+        if (siblingText) {
+          candidates.push({ text: siblingText, source: `父级兄弟-${depth}`, weight: 6 - depth });
+        }
+      }
+      
+      currentParent = currentParent.parentElement;
+      depth++;
     }
 
-    return candidates.find(text => text && text.length >= 2 && text.length <= 20) || '';
+    // 策略3: 查找同级容器中的标签元素
+    const container = element.closest('[class*="form-item"], [class*="field"], [class*="input-group"]');
+    if (container) {
+      const labels = container.querySelectorAll('label, [class*="label"]:not(input)');
+      labels.forEach((label, index) => {
+        if (!label.contains(element) && label !== element) {
+          const labelText = this.extractElementText(label);
+          if (labelText) {
+            candidates.push({ text: labelText, source: `容器标签-${index}`, weight: 7 });
+          }
+        }
+      });
+    }
+
+    // 按权重排序并返回最佳候选
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.weight - a.weight);
+      
+      for (const candidate of candidates) {
+        if (this.isValidLabelText(candidate.text)) {
+          console.log(`🔍 兄弟文本识别: "${candidate.text}" (来源: ${candidate.source})`);
+          return candidate.text;
+        }
+      }
+    }
+
+    return '';
+  }
+
+  // 🎯 新增：提取元素的有效文本内容
+  extractElementText(element) {
+    if (!element) return '';
+    
+    // 排除交互元素
+    if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(element.tagName)) {
+      return '';
+    }
+    
+    let text = '';
+    
+    // 优先获取直接文本内容
+    for (const node of element.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        text += node.textContent;
+      }
+    }
+    
+    // 如果没有直接文本，获取第一层子元素的文本
+    if (!text.trim()) {
+      const firstTextElement = element.querySelector(':not(input):not(select):not(textarea):not(button)');
+      if (firstTextElement) {
+        text = firstTextElement.textContent;
+      }
+    }
+    
+    // 最后使用完整文本内容
+    if (!text.trim()) {
+      text = element.textContent;
+    }
+    
+    return this.cleanLabelText(text);
   }
 
   // 📄 查找父容器文本
@@ -1335,13 +1540,31 @@ class FormFieldScanner {
   cleanLabelText(text) {
     if (!text) return '';
 
-    return text
+    let cleaned = text
       .replace(/[*:：\s]+$/g, '') // 移除末尾的星号、冒号、空格
       .replace(/^\s*[*]\s*/, '') // 移除开头的星号
       .replace(/\s+/g, ' ')      // 合并多个空格
       .replace(/必填|选填|可选/g, '') // 移除必填提示
       .replace(/保\s*存|删\s*除|取\s*消|确\s*定|提\s*交|重\s*置/g, '') // 移除常见按钮文字
       .trim();
+
+    // 🎯 新增：过滤Phoenix框架和其他UI框架的通用无意义文本
+    const meaninglessPatterns = [
+      /^(请输入|输入|请选择|选择|请填写|填写|请点击|点击)$/i,
+      /^(input|select|textarea|button|submit|reset|search)$/i,
+      /^(请输入.*|输入.*|请选择.*|选择.*)$/i,
+      /^[\d\s\-_]+$/, // 纯数字、空格、横线、下划线
+      /^(input_\d+|field_\d+|element_\d+)$/i, // 自动生成的ID模式
+      /^(等待填写|待填写|暂无|无|空|null|undefined)$/i,
+      /^[^\u4e00-\u9fa5a-zA-Z]+$/ // 不包含中文或英文字母的文本
+    ];
+
+    // 如果匹配到无意义模式，返回空字符串
+    if (meaninglessPatterns.some(pattern => pattern.test(cleaned))) {
+      return '';
+    }
+
+    return cleaned;
   }
 
   // 查找附近的文本元素
